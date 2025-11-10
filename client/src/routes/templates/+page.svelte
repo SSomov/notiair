@@ -1,0 +1,37 @@
+<script lang="ts">
+	import { templateStore } from '@stores/templates';
+
+	const templates = templateStore;
+</script>
+
+<section class="space-y-6">
+	<header class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+		<div class="space-y-2">
+			<span class="pill">templates</span>
+			<div>
+				<h1 class="text-3xl font-semibold">Template Studio</h1>
+				<p class="text-sm text-muted">
+					Создавайте шаблоны Telegram с переменными и предпросмотром.
+				</p>
+			</div>
+		</div>
+		<button class="btn-primary">Новый шаблон</button>
+	</header>
+
+	<div class="grid gap-4">
+		{#each $templates as template}
+			<article class="glass-card">
+				<div class="flex items-start justify-between gap-3">
+					<div>
+						<h2 class="text-lg font-semibold text-text">{template.name}</h2>
+						<p class="text-sm text-muted">{template.description}</p>
+					</div>
+					<span class="pill">id: {template.id}</span>
+				</div>
+				<pre class="mt-4 rounded-xl bg-surfaceMuted/60 p-4 text-sm text-text">
+{template.body}
+        </pre>
+			</article>
+		{/each}
+	</div>
+</section>

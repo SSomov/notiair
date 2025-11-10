@@ -1,0 +1,39 @@
+# Билд этап для SvelteKit
+FROM oven/bun:1.3 as builder
+
+WORKDIR /app
+
+# Копируем package файлы
+COPY client/package.json client/bun.lock ./
+
+# Устанавливаем зависимости
+RUN bun install --frozen-lockfile
+
+# Копируем исходный код
+COPY client/ ./
+
+# Собираем приложение (используем --bun для использования Bun runtime)
+RUN bun --bun run build
+
+# Production этап
+FROM oven/bun:1.3
+
+WORKDIR /app
+
+# Устанавливаем переменную окружения для production
+ENV NODE_ENV=production
+
+# Копируем package файлы
+COPY client/package.json client/bun.lock ./
+
+# Копируем node_modules из builder для гарантии совместимости версий
+COPY --from=builder /app/node_modules ./node_modules
+
+# Копируем собранные файлы
+COPY --from=builder /app/build ./build
+
+# Открываем порт
+EXPOSE 3000
+
+# Запускаем приложение (согласно документации Bun: bun ./build/index.js)
+CMD ["bun", "./build/index.js"]

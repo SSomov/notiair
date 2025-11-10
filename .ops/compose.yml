@@ -1,0 +1,65 @@
+name: clash-subscription
+volumes:
+  clash-db:
+    name: clash-db
+
+networks:
+  public:
+    name: public
+    external: true
+
+services:
+  api:
+    image: $DOCKER_IMAGE_URL:api-$IMAGE_TAG
+    container_name: clash-api
+    # ports:
+    #   - "8080:8080"
+    volumes:
+      - clash-db:/app/data
+    environment:
+      - DB_PATH=/app/data/clash.db
+      - HMAC_SECRET=${HMAC_SECRET:-your-secret-key-change-in-production}
+      - PUBLIC_API_URL=https://${DOMAIN}
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.clash-api.entrypoints=https"
+      - "traefik.http.routers.clash-api.tls=true"
+      - "traefik.http.routers.clash-api.rule=Host(`$DOMAIN`)"
+      - "traefik.http.routers.clash-api.service=clash-api"
+      - "traefik.http.routers.clash-api.priority=7000"
+      - "traefik.http.services.clash-api.loadbalancer.server.port=8080"
+      - "traefik.http.routers.clash-api.middlewares=vpn@file"
+
+
+      - "traefik.http.routers.clash-api-pub.entrypoints=https"
+      - "traefik.http.routers.clash-api-pub.tls=true"
+      - "traefik.http.routers.clash-api-pub.rule=Host(`$DOMAIN`) && PathPrefix(`/sub`)"
+      - "traefik.http.routers.clash-api-pub.service=clash-api-pub"
+      - "traefik.http.routers.clash-api-pub.priority=8000"
+      - "traefik.http.services.clash-api-pub.loadbalancer.server.port=8080"
+    networks:
+      - public
+
+  client:
+    image: $DOCKER_IMAGE_URL:client-$IMAGE_TAG
+    container_name: clash-client
+    # ports:
+    #   - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PUBLIC_API_URL=http://api:8080
+      - DOMAIN=$DOMAIN
+    depends_on:
+      - api
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.clash-client.rule=Host(`$DOMAIN`) && !(PathPrefix(`/api`) || PathPrefix(`/sub`))"
+      - "traefik.http.routers.clash-client.service=clash-client"
+      - "traefik.http.routers.clash-client.tls=true"
+      - "traefik.http.routers.clash-client.priority=8000"
+      - "traefik.http.routers.clash-client.middlewares=vpn@file"
+      - "traefik.http.services.clash-client.loadbalancer.server.port=3000"
+    networks: 
+      - public
