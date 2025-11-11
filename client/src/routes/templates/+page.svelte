@@ -4,7 +4,7 @@
 	const templates = templateStore;
 </script>
 
-<section class="space-y-6">
+<section class="space-y-8 px-4 pb-12 pt-2 md:px-12 md:pt-4">
 	<header class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
 		<div class="space-y-2">
 			<span class="pill">templates</span>
