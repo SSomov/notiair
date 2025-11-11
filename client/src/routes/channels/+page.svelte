@@ -2,6 +2,7 @@
   type ChannelLink = {
     name: string;
     description: string;
+    muted: boolean;
   };
 
   type ConnectorEntry = {
@@ -19,11 +20,6 @@
     connectors: ConnectorEntry[];
   };
 
-  const prefixMap: Record<ChannelGroup['slug'], string> = {
-    telegram: 'TG',
-    slack: 'SL',
-    smtp: 'SM'
-  };
 
   let groups: ChannelGroup[] = [
     {
@@ -37,8 +33,8 @@
           id: '#TG-001',
           comment: 'Основной токен для product-уведомлений',
           channels: [
-            { name: '@product-updates', description: 'Редакционные апдейты и релизы' },
-            { name: '@support', description: 'Поддержка клиентов и эскалации' }
+            { name: '@product-updates', description: 'Редакционные апдейты и релизы', muted: false },
+            { name: '@support', description: 'Поддержка клиентов и эскалации', muted: false }
           ]
         }
       ]
@@ -54,8 +50,8 @@
           id: '#SL-001',
           comment: 'Workspace alerts',
           channels: [
-            { name: '#on-call', description: 'Дежурная смена и инциденты' },
-            { name: '#marketing', description: 'Коммуникации маркетинга' }
+            { name: '#on-call', description: 'Дежурная смена и инциденты', muted: false },
+            { name: '#marketing', description: 'Коммуникации маркетинга', muted: false }
           ]
         }
       ]
@@ -71,60 +67,37 @@
           id: '#SM-001',
           comment: 'Primary transactional SMTP',
           channels: [
-            { name: 'alerts@notiair', description: 'Оповещения инфраструктуры' },
-            { name: 'billing@notiair', description: 'Счета и биллинговые уведомления' }
+            { name: 'alerts@notiair', description: 'Оповещения инфраструктуры', muted: false },
+            { name: 'billing@notiair', description: 'Счета и биллинговые уведомления', muted: false }
           ]
         }
       ]
     }
   ];
 
-  let modalType: 'connector' | 'channel' | null = null;
   let activeGroup: ChannelGroup | null = null;
   let activeEntry: ConnectorEntry | null = null;
-  let connectorComment = '';
   let channelInput = '';
   let channelDescription = '';
+  let channelModalOpen = false;
 
-  function openConnectorModal(group: ChannelGroup) {
-    activeGroup = group;
-    activeEntry = null;
-    connectorComment = '';
-    modalType = 'connector';
-  }
 
   function openChannelModal(group: ChannelGroup, entry: ConnectorEntry) {
     activeGroup = group;
     activeEntry = entry;
     channelInput = '';
     channelDescription = '';
-    modalType = 'channel';
+    channelModalOpen = true;
   }
 
   function closeModal() {
-    modalType = null;
+    channelModalOpen = false;
     activeGroup = null;
     activeEntry = null;
+    channelInput = '';
+    channelDescription = '';
   }
 
-  function saveConnector() {
-    if (!activeGroup) return;
-    groups = groups.map((group) => {
-      if (group.slug !== activeGroup?.slug) return group;
-      const nextIndex = group.connectors.length + 1;
-      const id = `#${prefixMap[group.slug]}-${String(nextIndex).padStart(3, '0')}`;
-      const entry: ConnectorEntry = {
-        id,
-        comment: connectorComment.trim(),
-        channels: []
-      };
-      return {
-        ...group,
-        connectors: [...group.connectors, entry]
-      };
-    });
-    closeModal();
-  }
 
   function saveChannel() {
     if (!activeGroup || !activeEntry || !channelInput.trim()) return;
@@ -139,7 +112,7 @@
           entry.id === activeEntry.id
             ? {
                 ...entry,
-                channels: [...entry.channels, { name: value, description }]
+                channels: [...entry.channels, { name: value, description, muted: false }]
               }
             : entry
         )
@@ -158,6 +131,29 @@
             ? {
                 ...entry,
                 channels: entry.channels.filter((channel) => channel.name !== channelName)
+              }
+            : entry
+        )
+      };
+    });
+  }
+
+  function toggleMute(
+    groupSlug: ChannelGroup['slug'],
+    connectorId: string,
+    channelName: string
+  ) {
+    groups = groups.map((group) => {
+      if (group.slug !== groupSlug) return group;
+      return {
+        ...group,
+        connectors: group.connectors.map((entry) =>
+          entry.id === connectorId
+            ? {
+                ...entry,
+                channels: entry.channels.map((channel) =>
+                  channel.name === channelName ? { ...channel, muted: !channel.muted } : channel
+                )
               }
             : entry
         )
@@ -185,10 +181,7 @@
               {group.name}
             </h2>
           </div>
-          <button type="button" class="btn-primary hidden md:inline-flex" on:click={() => openConnectorModal(group)}>
-            Добавить связку
-          </button>
-        </div>
+              </div>
 
         <div class="space-y-4">
           {#each group.connectors as entry (entry.id)}
@@ -235,6 +228,22 @@
                           </svg>
                         </button>
                       </div>
+                      <div class="mt-3 flex items-center justify-between text-xs">
+                        {#if channel.muted}
+                          <span class="inline-flex items-center rounded-full bg-border/70 px-2.5 py-1 font-semibold uppercase tracking-wide text-text">
+                            Muted
+                          </span>
+                        {:else}
+                          <span class="text-muted">Активен</span>
+                        {/if}
+                        <button
+                          type="button"
+                          class="inline-flex items-center justify-center gap-1 rounded-lg border border-border px-3 py-1 font-semibold text-muted transition hover:border-primary hover:text-primary"
+                          on:click={() => toggleMute(group.slug, entry.id, channel.name)}
+                        >
+                          {channel.muted ? 'Unmute' : 'Mute'}
+                        </button>
+                      </div>
                     </div>
                   {/each}
                 </div>
@@ -246,70 +255,51 @@
     {/each}
   </div>
 
-  {#if modalType && activeGroup}
+  {#if channelModalOpen && activeGroup && activeEntry}
     <div class="modal-backdrop" role="presentation" on:click={closeModal}></div>
     <div class="modal-wrap" role="dialog" aria-modal="true">
       <div class="modal">
         <div class="modal-header">
           <h3 class="text-lg font-semibold text-text">
-            {modalType === 'connector' && `Новая связка ${activeGroup.name}`}
-            {modalType === 'channel' && activeEntry && `Добавить канал для ${activeEntry.id}`}
+            Добавить канал для {activeEntry.id}
           </h3>
           <button type="button" class="modal-close" on:click={closeModal} aria-label="Закрыть">
             ✕
           </button>
         </div>
 
-        {#if modalType === 'connector'}
-          <div class="modal-body space-y-4">
-            <div class="space-y-1">
-              <label class="text-sm font-medium text-text" for="connector-comment">Комментарий</label>
-              <input
-                id="connector-comment"
-                class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
-                bind:value={connectorComment}
-                placeholder="Например: приглашения для партнёров"
-              />
-            </div>
+        <div class="modal-body space-y-4">
+          <div class="space-y-1">
+            <label class="text-sm font-medium text-text" for="channel-input">Канал</label>
+            <input
+              id="channel-input"
+              class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
+              bind:value={channelInput}
+              placeholder="Например: @status-updates или #marketing"
+              autocomplete="off"
+            />
           </div>
-          <div class="modal-footer">
-            <button type="button" class="btn-secondary" on:click={closeModal}>Отменить</button>
-            <button type="button" class="btn-primary" on:click={saveConnector}>Сохранить</button>
+          <div class="space-y-1">
+            <label class="text-sm font-medium text-text" for="channel-description">Описание</label>
+            <textarea
+              id="channel-description"
+              class="h-20 w-full resize-none rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
+              bind:value={channelDescription}
+              placeholder="Кратко объясните назначение канала"
+            ></textarea>
           </div>
-        {:else if modalType === 'channel' && activeEntry}
-          <div class="modal-body space-y-4">
-            <div class="space-y-1">
-              <label class="text-sm font-medium text-text" for="channel-input">Канал</label>
-              <input
-                id="channel-input"
-                class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
-                bind:value={channelInput}
-                placeholder="Например: @status-updates или #marketing"
-                autocomplete="off"
-              />
-            </div>
-            <div class="space-y-1">
-              <label class="text-sm font-medium text-text" for="channel-description">Описание</label>
-              <textarea
-                id="channel-description"
-                class="h-20 w-full resize-none rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
-                bind:value={channelDescription}
-                placeholder="Кратко объясните назначение канала"
-              ></textarea>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn-secondary" on:click={closeModal}>Отменить</button>
-            <button
-              type="button"
-              class="btn-primary"
-              on:click={saveChannel}
-              disabled={!channelInput.trim()}
-            >
-              Сохранить
-            </button>
-          </div>
-        {/if}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" on:click={closeModal}>Отменить</button>
+          <button
+            type="button"
+            class="btn-primary"
+            on:click={saveChannel}
+            disabled={!channelInput.trim()}
+          >
+            Сохранить
+          </button>
+        </div>
       </div>
     </div>
   {/if}
