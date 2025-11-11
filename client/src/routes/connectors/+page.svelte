@@ -1,32 +1,316 @@
-<section class="space-y-8 px-4 pb-12 pt-2 md:px-12 md:pt-4">
-	<header class="space-y-2">
-		<span class="pill">connectors</span>
-		<p class="text-sm text-muted max-w-2xl">
-			Управляйте интеграциями NotiAir: подключайте каналы, масштабируйте доставку и переиспользуйте
-			общие настройки сервисов.
-		</p>
-	</header>
+<script lang="ts">
+  type Connector = {
+    slug: 'telegram' | 'slack' | 'smtp';
+    name: string;
+    description: string;
+    badge: string;
+    color: string;
+    placeholder: string;
+  };
 
-	<div class="grid gap-6 md:grid-cols-3">
-		{#each [{ name: 'Telegram', description: 'Токены', badge: 'messanger', color: 'text-accent' }, { name: 'Slack', description: 'Вебхуки и workspace токены', badge: 'chat', color: 'text-warning' }, { name: 'SMTP', description: 'SMTP Credentials', badge: 'mail', color: 'text-positive' }] as connector}
-			<article class="glass-card h-full space-y-4">
-				<div class="flex items-center justify-between">
-					<h2 class={`text-xl font-semibold ${connector.color}`}>{connector.name}</h2>
-					<span class="pill capitalize">{connector.badge}</span>
-				</div>
-				<div class="space-y-2 text-sm text-muted">
-					<p class="font-semibold text-text/80">{connector.subtitle}</p>
-					<p>{connector.description}</p>
-				</div>
-				<div class="flex items-center gap-3">
-					<button
-						type="button"
-						class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm"
-					>
-						Добавить
-					</button>
-				</div>
-			</article>
-		{/each}
-	</div>
+  const connectors: Connector[] = [
+    {
+      slug: 'telegram',
+      name: 'Telegram',
+      description: 'Токены ботов и канала для маршрутизации.',
+      badge: 'messenger',
+      color: 'text-accent',
+      placeholder: 'Введите Bot API Token'
+    },
+    {
+      slug: 'slack',
+      name: 'Slack',
+      description: 'Вебхуки и workspace токены для уведомлений.',
+      badge: 'chat',
+      color: 'text-warning',
+      placeholder: 'Введите Slack webhook URL или token'
+    },
+    {
+      slug: 'smtp',
+      name: 'SMTP',
+      description: 'SMTP credentials для доставки писем.',
+      badge: 'mail',
+      color: 'text-positive',
+      placeholder: 'Введите SMTP connection string'
+    }
+  ];
+
+  type Note = {
+    id: string;
+    secret: string;
+    comment: string;
+  };
+
+  let notes: Record<Connector['slug'], Note[]> = {
+    telegram: [],
+    slack: [],
+    smtp: []
+  };
+
+  let modalOpen = false;
+  let current: Connector | null = null;
+  let secretInput = '';
+  let commentInput = '';
+
+  function openModal(connector: Connector) {
+    current = connector;
+    secretInput = '';
+    commentInput = '';
+    modalOpen = true;
+  }
+
+  function closeModal() {
+    modalOpen = false;
+    current = null;
+  }
+
+  function saveConnector() {
+    if (!current) return;
+    const existingNotes = notes[current.slug];
+    const nextIndex = existingNotes.length + 1;
+    const id = `#${current.slug.slice(0, 2).toUpperCase()}-${String(nextIndex).padStart(3, '0')}`;
+
+    notes = {
+      ...notes,
+      [current.slug]: [
+        ...existingNotes,
+        {
+          id,
+          secret: secretInput.trim(),
+          comment: commentInput.trim()
+        }
+      ]
+    };
+
+    closeModal();
+  }
+
+  function editNote(slug: Connector['slug'], note: Note) {
+    current = connectors.find((c) => c.slug === slug) ?? null;
+    if (!current) return;
+    secretInput = note.secret;
+    commentInput = note.comment;
+    modalOpen = true;
+  }
+
+  function deleteNote(slug: Connector['slug'], id: string) {
+    notes = {
+      ...notes,
+      [slug]: notes[slug].filter((note) => note.id !== id)
+    };
+  }
+</script>
+
+<section class="space-y-8 px-4 pb-12 pt-2 md:px-12 md:pt-4">
+  <header class="space-y-2">
+    <span class="pill">connectors</span>
+    <p class="text-sm text-muted max-w-2xl">
+      Управляйте интеграциями NotiAir: подключайте каналы, масштабируйте доставку и переиспользуйте
+      общие настройки сервисов.
+    </p>
+  </header>
+
+  <div class="grid gap-6 md:grid-cols-3">
+    {#each connectors as connector}
+      <article class="glass-card h-full space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class={`text-xl font-semibold ${connector.color}`}>{connector.name}</h2>
+          <span class="pill capitalize">{connector.badge}</span>
+        </div>
+        <p class="text-sm text-muted">{connector.description}</p>
+
+        <div class="space-y-3">
+          <button
+            type="button"
+            class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm"
+            on:click={() => openModal(connector)}
+          >
+            Добавить
+          </button>
+
+          {#if notes[connector.slug].length > 0}
+            <div class="space-y-2">
+              {#each notes[connector.slug] as note}
+                <div class="flex items-start justify-between gap-3 rounded-xl border border-border bg-surfaceMuted/60 p-3 text-sm text-muted">
+                  <div>
+                    <p class="font-semibold text-text">{note.id}</p>
+                    {#if note.comment}
+                      <p class="mt-1">{note.comment}</p>
+                    {/if}
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <button
+                      type="button"
+                      class="icon-btn"
+                      title="Редактировать"
+                      aria-label="Редактировать"
+                      on:click={() => editNote(connector.slug, note)}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
+                        <path d="M16.862 3.487 20.51 7.136a1.5 1.5 0 0 1 0 2.121l-9.193 9.193-4.593.511a1 1 0 0 1-1.1-1.1l.511-4.593 9.193-9.193a1.5 1.5 0 0 1 2.121 0Z" />
+                        <path d="M19 11.5 12.5 5" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      class="icon-btn"
+                      title="Удалить"
+                      aria-label="Удалить"
+                      on:click={() => deleteNote(connector.slug, note.id)}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
+                        <path d="M6 7h12" />
+                        <path d="M10 11v6" />
+                        <path d="M14 11v6" />
+                        <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12" />
+                        <path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      </article>
+    {/each}
+  </div>
+
+  {#if modalOpen && current}
+    <div class="modal-backdrop" role="presentation" on:click={closeModal}></div>
+    <div class="modal-wrap" role="dialog" aria-modal="true">
+      <div class="modal">
+        <div class="modal-header">
+          <h3 class="text-lg font-semibold text-text">Добавить {current.name}</h3>
+          <button type="button" class="modal-close" on:click={closeModal} aria-label="Закрыть">
+            ✕
+          </button>
+        </div>
+        <div class="modal-body space-y-4">
+          <div class="space-y-1">
+            <label class="text-sm font-medium text-text" for="secret-input">Секрет / токен</label>
+            <input
+              id="secret-input"
+              class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
+              bind:value={secretInput}
+              placeholder={current.placeholder}
+              autocomplete="off"
+            />
+          </div>
+          <div class="space-y-1">
+            <label class="text-sm font-medium text-text" for="comment-input">Комментарий</label>
+            <textarea
+              id="comment-input"
+              class="h-24 w-full resize-none rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
+              bind:value={commentInput}
+              placeholder="Например: основной бот для статуса заказов"
+            ></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" on:click={closeModal}>Отменить</button>
+          <button
+            type="button"
+            class="btn-primary"
+            on:click={saveConnector}
+            disabled={!secretInput.trim()}
+          >
+            Сохранить
+        </button>
+        </div>
+      </div>
+    </div>
+  {/if}
 </section>
+
+<style>
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.26);
+    backdrop-filter: blur(6px);
+    z-index: 40;
+  }
+
+  .modal-wrap {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+  }
+
+  .modal {
+    width: min(420px, 100%);
+    border-radius: 1.25rem;
+    background: var(--surface, #ffffff);
+    border: 1px solid var(--border, #e2e8f0);
+    box-shadow: 0 30px 60px -35px rgba(15, 23, 42, 0.45);
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    padding: 1.75rem;
+    max-height: calc(100vh - 4rem);
+  }
+
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .modal-body {
+    overflow-y: auto;
+  }
+
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+  }
+
+  .modal-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    background: #fff;
+    color: #64748b;
+    transition: 120ms ease;
+  }
+
+  .modal-close:hover {
+    color: #2563eb;
+    border-color: rgba(37, 99, 235, 0.5);
+    transform: translateY(-1px);
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-surface px-5 py-2 text-sm font-semibold text-muted transition hover:text-text;
+  }
+
+  .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    background: #fff;
+    color: #64748b;
+    transition: 120ms ease;
+  }
+
+  .icon-btn:hover {
+    color: #2563eb;
+    border-color: rgba(37, 99, 235, 0.5);
+    transform: translateY(-1px);
+  }
+</style>
+
