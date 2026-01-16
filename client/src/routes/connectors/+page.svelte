@@ -50,24 +50,24 @@ let notes: Record<Connector["slug"], Note[]> = {
 	smtp: [],
 };
 
-let _modalOpen = false;
+let modalOpen = false;
 let current: Connector | null = null;
 let secretInput = "";
 let commentInput = "";
 
-function _openModal(connector: Connector) {
+function openModal(connector: Connector) {
 	current = connector;
 	secretInput = "";
 	commentInput = "";
-	_modalOpen = true;
+	modalOpen = true;
 }
 
 function closeModal() {
-	_modalOpen = false;
+	modalOpen = false;
 	current = null;
 }
 
-function _saveConnector() {
+function saveConnector() {
 	if (!current) return;
 	const existingNotes = notes[current.slug];
 	const nextIndex = existingNotes.length + 1;
@@ -88,15 +88,15 @@ function _saveConnector() {
 	closeModal();
 }
 
-function _editNote(slug: Connector["slug"], note: Note) {
+function editNote(slug: Connector["slug"], note: Note) {
 	current = connectors.find((c) => c.slug === slug) ?? null;
 	if (!current) return;
 	secretInput = note.secret;
 	commentInput = note.comment;
-	_modalOpen = true;
+	modalOpen = true;
 }
 
-function _deleteNote(slug: Connector["slug"], id: string) {
+function deleteNote(slug: Connector["slug"], id: string) {
 	notes = {
 		...notes,
 		[slug]: notes[slug].filter((note) => note.id !== id),

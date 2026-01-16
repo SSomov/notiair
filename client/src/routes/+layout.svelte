@@ -19,7 +19,7 @@ async function switchLanguage() {
 
 <header class="sticky top-0 z-40 w-full border-b border-border bg-surface/95 shadow-sm backdrop-blur">
   <div class="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4 md:px-10">
-    <div class="flex items-center gap-4">
+    <a href={currentLocale === 'ru' ? '/ru/' : '/'} class="flex items-center gap-4 transition hover:opacity-80">
       <span class="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-accent/10 text-2xl text-accent">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-6 w-6">
           <path d="M13.5 2a1 1 0 0 1 .894.553l6 12A1 1 0 0 1 19.5 16h-5.382l.618 5.543a1 1 0 0 1-1.872.654l-9-14A1 1 0 0 1 4.75 6H10.5l-1.118-3.276A1 1 0 0 1 10.341 2H13.5Z" />
@@ -29,7 +29,7 @@ async function switchLanguage() {
         <p class="text-xs font-semibold uppercase tracking-[0.45em] text-accent">{$t('header.title')}</p>
         <p class="text-xs uppercase tracking-[0.3em] text-muted">{$t('header.subtitle')}</p>
       </div>
-    </div>
+    </a>
 
     <div class="flex items-center gap-3">
       <a href={currentLocale === 'ru' ? '/ru/connectors' : '/connectors'} class="btn-primary hidden md:inline-flex">{$t('common.connectors')}</a>
