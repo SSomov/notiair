@@ -6,6 +6,7 @@
     badge: string;
     color: string;
     placeholder: string;
+    comingSoon?: boolean;
   };
 
   const connectors: Connector[] = [
@@ -23,7 +24,8 @@
       description: 'Вебхуки и workspace токены для уведомлений.',
       badge: 'chat',
       color: 'text-warning',
-      placeholder: 'Введите Slack webhook URL или token'
+      placeholder: 'Введите Slack webhook URL или token',
+      comingSoon: true
     },
     {
       slug: 'smtp',
@@ -31,7 +33,8 @@
       description: 'SMTP credentials для доставки писем.',
       badge: 'mail',
       color: 'text-positive',
-      placeholder: 'Введите SMTP connection string'
+      placeholder: 'Введите SMTP connection string',
+      comingSoon: true
     }
   ];
 
@@ -112,21 +115,77 @@
 
   <div class="grid gap-6 md:grid-cols-3">
     {#each connectors as connector}
-      <article class="glass-card h-full space-y-4">
-        <div class="flex items-center justify-between">
-          <h2 class={`text-xl font-semibold ${connector.color}`}>{connector.name}</h2>
-          <span class="pill capitalize">{connector.badge}</span>
-        </div>
-        <p class="text-sm text-muted">{connector.description}</p>
+      {#if connector.slug === 'telegram'}
+        <a href="/connectors/telegram" class="glass-card h-full space-y-4 block transition hover:shadow-lg cursor-pointer">
+          <div class="flex items-center justify-between">
+            <h2 class={`text-xl font-semibold ${connector.color}`}>{connector.name}</h2>
+            <span class="pill capitalize">{connector.badge}</span>
+          </div>
+          <p class="text-sm text-muted">{connector.description}</p>
 
-        <div class="space-y-3">
-          <button
-            type="button"
-            class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm"
-            on:click={() => openModal(connector)}
-          >
-            Добавить
-          </button>
+          <div class="space-y-3">
+            {#if notes[connector.slug].length > 0}
+              <div class="space-y-2">
+                {#each notes[connector.slug] as note}
+                  <div class="flex items-start justify-between gap-3 rounded-xl border border-border bg-surfaceMuted/60 p-3 text-sm text-muted">
+                    <div>
+                      <p class="font-semibold text-text">{note.id}</p>
+                      {#if note.comment}
+                        <p class="mt-1">{note.comment}</p>
+                      {/if}
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <button
+                        type="button"
+                        class="icon-btn"
+                        title="Редактировать"
+                        aria-label="Редактировать"
+                        on:click|stopPropagation={() => editNote(connector.slug, note)}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
+                          <path d="M16.862 3.487 20.51 7.136a1.5 1.5 0 0 1 0 2.121l-9.193 9.193-4.593.511a1 1 0 0 1-1.1-1.1l.511-4.593 9.193-9.193a1.5 1.5 0 0 1 2.121 0Z" />
+                          <path d="M19 11.5 12.5 5" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        class="icon-btn"
+                        title="Удалить"
+                        aria-label="Удалить"
+                        on:click|stopPropagation={() => deleteNote(connector.slug, note.id)}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
+                          <path d="M6 7h12" />
+                          <path d="M10 11v6" />
+                          <path d="M14 11v6" />
+                          <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12" />
+                          <path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        </a>
+      {:else}
+        <article class="glass-card h-full space-y-4" class:opacity-50={connector.comingSoon} class:pointer-events-none={connector.comingSoon}>
+          <div class="flex items-center justify-between">
+            <h2 class={`text-xl font-semibold ${connector.color}`}>{connector.name}</h2>
+            <span class="pill capitalize">{connector.badge}</span>
+          </div>
+          <p class="text-sm text-muted">{connector.description}</p>
+
+          <div class="space-y-3">
+            <button
+              type="button"
+              class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm"
+              disabled={connector.comingSoon}
+              on:click={() => connector.comingSoon || openModal(connector)}
+            >
+              {connector.comingSoon ? 'Coming soon' : 'Добавить'}
+            </button>
 
           {#if notes[connector.slug].length > 0}
             <div class="space-y-2">
@@ -144,7 +203,8 @@
                       class="icon-btn"
                       title="Редактировать"
                       aria-label="Редактировать"
-                      on:click={() => editNote(connector.slug, note)}
+                      disabled={connector.comingSoon}
+                      on:click={() => connector.comingSoon || editNote(connector.slug, note)}
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
                         <path d="M16.862 3.487 20.51 7.136a1.5 1.5 0 0 1 0 2.121l-9.193 9.193-4.593.511a1 1 0 0 1-1.1-1.1l.511-4.593 9.193-9.193a1.5 1.5 0 0 1 2.121 0Z" />
@@ -156,7 +216,8 @@
                       class="icon-btn"
                       title="Удалить"
                       aria-label="Удалить"
-                      on:click={() => deleteNote(connector.slug, note.id)}
+                      disabled={connector.comingSoon}
+                      on:click={() => connector.comingSoon || deleteNote(connector.slug, note.id)}
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
                         <path d="M6 7h12" />
@@ -173,6 +234,7 @@
           {/if}
         </div>
       </article>
+      {/if}
     {/each}
   </div>
 
