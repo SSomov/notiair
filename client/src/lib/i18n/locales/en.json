@@ -1,0 +1,71 @@
+{
+	"common": {
+		"beta": "beta",
+		"active": "active",
+		"demo": "demo",
+		"ms": "ms",
+		"dashboard": "dashboard",
+		"workflows": "workflows",
+		"templates": "templates",
+		"queues": "queues",
+		"channels": "channels",
+		"connectors": "connectors"
+	},
+	"header": {
+		"title": "NotiAir",
+		"subtitle": "Notification Service",
+		"openSettings": "Open settings"
+	},
+	"dashboard": {
+		"description": "Basic overview of service activity: processed events, latency, and workflow distribution across channels.",
+		"queueEvents": {
+			"title": "Queue Events",
+			"subtitle": "Last 24 hours"
+		},
+		"latency": {
+			"title": "Latency",
+			"subtitle": "Average delivery time by steps"
+		},
+		"channelDistribution": {
+			"title": "Channel Distribution",
+			"subtitle": "Statistics of recent sends",
+			"share": "share of all notifications"
+		}
+	},
+	"workflows": {
+		"description": "Build automations from triggers, filters, and actions. Manage versions, create drafts, and reusable blocks for teams.",
+		"goToTemplates": "Go to templates",
+		"newWorkflow": "New workflow",
+		"activeScenarios": {
+			"title": "Active Scenarios",
+			"subtitle": "Ready to use",
+			"copy": "Copy workflow",
+			"description": "Routing to channels based on filters. Can be updated without stopping delivery.",
+			"openBuilder": "Open builder"
+		},
+		"drafts": {
+			"title": "Drafts",
+			"subtitle": "For testing and A/B",
+			"allDrafts": "All drafts",
+			"copy": "Copy draft",
+			"updated": "Updated",
+			"openDraft": "Open draft",
+			"createDraft": "Create draft",
+			"createDraftDescription": "Copy an existing scenario or start from scratch"
+		}
+	},
+	"templates": {
+		"title": "Template Studio",
+		"description": "Create Telegram templates with variables and preview.",
+		"newTemplate": "New template"
+	},
+	"queues": {
+		"title": "Queue Monitor",
+		"description": "Monitor tasks, delays, and retries in real time.",
+		"taskId": "Task ID",
+		"workflow": "Workflow",
+		"channel": "Channel",
+		"attempts": "Attempts",
+		"status": "Status"
+	}
+}

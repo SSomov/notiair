@@ -1,8 +1,12 @@
+<script lang="ts">
+  import { t } from '$lib/i18n';
+</script>
+
 <section class="space-y-8">
   <header class="space-y-3">
-    <span class="pill">dashboard</span>
+    <span class="pill">{$t('common.dashboard')}</span>
     <p class="text-muted max-w-2xl">
-      Базовый обзор активности сервисов: обработанные события, задержки и распределение workflow по каналам.
+      {$t('dashboard.description')}
     </p>
   </header>
 
@@ -10,10 +14,10 @@
     <article class="glass-card">
       <div class="flex items-center justify-between">
         <div>
-          <h2 class="text-lg font-semibold">События в очереди</h2>
-          <p class="text-sm text-muted">Последние 24 часа</p>
+          <h2 class="text-lg font-semibold">{$t('dashboard.queueEvents.title')}</h2>
+          <p class="text-sm text-muted">{$t('dashboard.queueEvents.subtitle')}</p>
         </div>
-        <span class="pill">demo</span>
+        <span class="pill">{$t('common.demo')}</span>
       </div>
       <div class="mt-6 h-52 rounded-xl bg-gradient-to-br from-accent/10 via-accent/5 to-surfaceMuted relative overflow-hidden">
         <div class="absolute inset-0 flex items-end gap-1 px-4 pb-4">
@@ -27,10 +31,10 @@
     <article class="glass-card">
       <div class="flex items-center justify-between">
         <div>
-          <h2 class="text-lg font-semibold">Latency</h2>
-          <p class="text-sm text-muted">Среднее время доставки по шагам</p>
+          <h2 class="text-lg font-semibold">{$t('dashboard.latency.title')}</h2>
+          <p class="text-sm text-muted">{$t('dashboard.latency.subtitle')}</p>
         </div>
-        <span class="pill">ms</span>
+        <span class="pill">{$t('common.ms')}</span>
       </div>
       <div class="mt-6 h-52 rounded-xl bg-gradient-to-br from-amber-100 via-white to-surfaceMuted relative overflow-hidden">
         <div class="absolute inset-0 px-4 py-6">
@@ -45,8 +49,8 @@
   <article class="glass-card">
     <div class="flex items-center justify-between">
       <div>
-        <h2 class="text-lg font-semibold">Распределение по каналам</h2>
-        <p class="text-sm text-muted">Статистика последних отправок</p>
+        <h2 class="text-lg font-semibold">{$t('dashboard.channelDistribution.title')}</h2>
+        <p class="text-sm text-muted">{$t('dashboard.channelDistribution.subtitle')}</p>
       </div>
     </div>
     <div class="mt-6 grid gap-4 md:grid-cols-4">
@@ -54,7 +58,7 @@
         <div class="rounded-xl border border-border bg-surfaceMuted p-4">
           <p class="text-sm font-semibold text-text">{channel}</p>
           <p class="mt-2 text-3xl font-bold text-accent">{(idx + 1) * 12}%</p>
-          <p class="text-xs text-muted">доля от всех уведомлений</p>
+          <p class="text-xs text-muted">{$t('dashboard.channelDistribution.share')}</p>
         </div>
       {/each}
     </div>

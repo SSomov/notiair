@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { workflowStore } from '@stores/workflows';
+	import { t } from '$lib/i18n';
 
 	const draftBlueprints = [
 		{
@@ -22,17 +23,16 @@
 <section class="space-y-8 px-4 pb-12 pt-2 md:px-12 md:pt-4">
 	<header class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
 		<div class="space-y-2">
-			<span class="pill">workflows</span>
+			<span class="pill">{$t('common.workflows')}</span>
 			<p class="text-sm text-muted max-w-2xl">
-				Собирайте автоматизации из триггеров, фильтров и действий. Управляйте версиями, создавайте
-				черновики и переиспользуемые блоки для команд.
+				{$t('workflows.description')}
 			</p>
 		</div>
 		<div class="flex flex-wrap gap-3">
-			<a href="/templates" class="btn-primary">Перейти к шаблонам</a>
+			<a href="/templates" class="btn-primary">{$t('workflows.goToTemplates')}</a>
 			<a
 				href="/workflows/new"
-				class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm">Новый workflow</a
+				class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm">{$t('workflows.newWorkflow')}</a
 			>
 		</div>
 	</header>
@@ -41,9 +41,9 @@
 		<div class="space-y-4">
 			<div class="flex items-center justify-between">
 				<div>
-					<h2 class="text-lg font-semibold">Активные сценарии</h2>
+					<h2 class="text-lg font-semibold">{$t('workflows.activeScenarios.title')}</h2>
 					<p class="text-xs uppercase tracking-wide text-muted">
-						Готовы к использованию • {activeWorkflows.length}
+						{$t('workflows.activeScenarios.subtitle')} • {activeWorkflows.length}
 					</p>
 				</div>
 			</div>
@@ -59,8 +59,8 @@
 								<button
 									type="button"
 									class="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border text-muted transition hover:text-accent"
-									aria-label="Скопировать workflow"
-									title="Скопировать workflow"
+									aria-label="{$t('workflows.activeScenarios.copy')}"
+									title="{$t('workflows.activeScenarios.copy')}"
 								>
 									<svg
 										xmlns="http://www.w3.org/2000/svg"
@@ -76,18 +76,18 @@
 								</button>
 								<span
 									class="inline-flex rounded-full bg-positive/10 px-3 py-1 text-xs font-medium text-positive"
-									>active</span
+									>{$t('common.active')}</span
 								>
 							</div>
 						</div>
 						<p class="mt-3 text-sm text-muted">
-							Маршрутизация к каналам на основе фильтров. Можно обновить без остановки доставки.
+							{$t('workflows.activeScenarios.description')}
 						</p>
 						<div class="mt-4 flex items-center justify-between">
 							<button
 								type="button"
 								class="inline-flex text-sm font-semibold text-accent hover:underline"
-								>Открыть конструктор</button
+								>{$t('workflows.activeScenarios.openBuilder')}</button
 							>
 						</div>
 					</article>
@@ -98,11 +98,11 @@
 		<div class="space-y-4">
 			<div class="flex items-center justify-between">
 				<div>
-					<h2 class="text-lg font-semibold">Черновики</h2>
-					<p class="text-xs uppercase tracking-wide text-muted">Для проверки и A/B</p>
+					<h2 class="text-lg font-semibold">{$t('workflows.drafts.title')}</h2>
+					<p class="text-xs uppercase tracking-wide text-muted">{$t('workflows.drafts.subtitle')}</p>
 				</div>
 				<button type="button" class="text-sm font-semibold text-accent hover:underline"
-					>Все черновики</button
+					>{$t('workflows.drafts.allDrafts')}</button
 				>
 			</div>
 			<div class="grid gap-4 sm:grid-cols-2">
@@ -112,13 +112,13 @@
 							<div class="space-y-2">
 								<h3 class="text-base font-semibold text-text">{draft.name}</h3>
 								<p class="text-sm text-muted">{draft.hint}</p>
-								<p class="text-xs text-muted">Обновлено {draft.updated}</p>
+								<p class="text-xs text-muted">{$t('workflows.drafts.updated')} {draft.updated}</p>
 							</div>
 							<button
 								type="button"
 								class="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border text-muted transition hover:text-accent"
-								aria-label="Скопировать черновик"
-								title="Скопировать черновик"
+								aria-label="{$t('workflows.drafts.copy')}"
+								title="{$t('workflows.drafts.copy')}"
 							>
 								<svg
 									xmlns="http://www.w3.org/2000/svg"
@@ -136,7 +136,7 @@
 						<button
 							type="button"
 							class="mt-4 inline-flex text-sm font-semibold text-accent hover:underline"
-							>Открыть черновик</button
+							>{$t('workflows.drafts.openDraft')}</button
 						>
 					</article>
 				{/each}
@@ -144,8 +144,8 @@
 					class="glass-card flex h-full items-center justify-center border-dashed border-border text-muted"
 				>
 					<div class="text-center">
-						<p class="font-semibold">Создать черновик</p>
-						<p class="text-sm text-muted">Скопируйте готовый сценарий или начните с пустого</p>
+						<p class="font-semibold">{$t('workflows.drafts.createDraft')}</p>
+						<p class="text-sm text-muted">{$t('workflows.drafts.createDraftDescription')}</p>
 					</div>
 				</article>
 			</div>

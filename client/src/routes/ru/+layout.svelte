@@ -1,5 +1,5 @@
 <script lang="ts">
-  import '../app.css';
+  import '../../app.css';
   import { t, locale, loadTranslations } from '$lib/i18n';
   import { page } from '$app/stores';
   import { switchLocale } from '$lib/i18n/utils';
@@ -7,10 +7,10 @@
 
   export let data: PageData;
 
-  $: currentLocale = data.locale || 'en';
+  $: currentLocale = data.locale || 'ru';
 
   async function switchLanguage() {
-    const newLocale = currentLocale === 'ru' ? 'en' : 'ru';
+    const newLocale = 'en';
     
     locale.set(newLocale);
     await switchLocale($page.url.pathname, newLocale, currentLocale);
@@ -32,9 +32,9 @@
     </div>
 
     <div class="flex items-center gap-3">
-      <a href={currentLocale === 'ru' ? '/ru/connectors' : '/connectors'} class="btn-primary hidden md:inline-flex">{$t('common.connectors')}</a>
-      <a href={currentLocale === 'ru' ? '/ru/channels' : '/channels'} class="btn-primary hidden md:inline-flex">{$t('common.channels')}</a>
-      <a href={currentLocale === 'ru' ? '/ru/workflows' : '/workflows'} class="btn-primary hidden md:inline-flex">{$t('common.workflows')}</a>
+      <a href="/ru/connectors" class="btn-primary hidden md:inline-flex">{$t('common.connectors')}</a>
+      <a href="/ru/channels" class="btn-primary hidden md:inline-flex">{$t('common.channels')}</a>
+      <a href="/ru/workflows" class="btn-primary hidden md:inline-flex">{$t('common.workflows')}</a>
       <span class="pill hidden md:inline-flex">{$t('common.beta')}</span>
       <span class="hidden text-sm text-muted md:inline">redis · postgres · telegram</span>
       <button
@@ -44,7 +44,7 @@
         aria-label="Switch language"
         title="Switch language"
       >
-        <span class="text-xs font-semibold">{currentLocale === 'ru' ? 'EN' : 'RU'}</span>
+        <span class="text-xs font-semibold">EN</span>
       </button>
       <button
         type="button"
@@ -65,4 +65,3 @@
     <slot />
   </div>
 </main>
-

@@ -29,7 +29,8 @@
   },
   "dependencies": {
     "@neodrag/svelte": "^2.0.0",
-    "@tanstack/svelte-table": "^8.9.6"
+    "@tanstack/svelte-table": "^8.9.6",
+    "sveltekit-i18n": "^2.4.2"
   },
   "overrides": {
     "@sveltejs/vite-plugin-svelte": "^4.0.0-next.6"

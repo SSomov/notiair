@@ -16,8 +16,12 @@
 		"enabled": true,
 		"rules": {
 			"recommended": true,
-			"correctness": {
-				"useConst": "off"
+			"correctness": {},
+			"style": {
+				"useConst": {
+				  "level": "warn",
+				  "fix": "unsafe"
+				}
 			}
 		}
 	},

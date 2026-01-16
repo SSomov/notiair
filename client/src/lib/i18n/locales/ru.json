@@ -1,0 +1,71 @@
+{
+	"common": {
+		"beta": "бета",
+		"active": "активен",
+		"demo": "демо",
+		"ms": "мс",
+		"dashboard": "панель",
+		"workflows": "workflows",
+		"templates": "шаблоны",
+		"queues": "очереди",
+		"channels": "каналы",
+		"connectors": "коннекторы"
+	},
+	"header": {
+		"title": "NotiAir",
+		"subtitle": "Notification Service",
+		"openSettings": "Открыть настройки"
+	},
+	"dashboard": {
+		"description": "Базовый обзор активности сервисов: обработанные события, задержки и распределение workflow по каналам.",
+		"queueEvents": {
+			"title": "События в очереди",
+			"subtitle": "Последние 24 часа"
+		},
+		"latency": {
+			"title": "Latency",
+			"subtitle": "Среднее время доставки по шагам"
+		},
+		"channelDistribution": {
+			"title": "Распределение по каналам",
+			"subtitle": "Статистика последних отправок",
+			"share": "доля от всех уведомлений"
+		}
+	},
+	"workflows": {
+		"description": "Собирайте автоматизации из триггеров, фильтров и действий. Управляйте версиями, создавайте черновики и переиспользуемые блоки для команд.",
+		"goToTemplates": "Перейти к шаблонам",
+		"newWorkflow": "Новый workflow",
+		"activeScenarios": {
+			"title": "Активные сценарии",
+			"subtitle": "Готовы к использованию",
+			"copy": "Скопировать workflow",
+			"description": "Маршрутизация к каналам на основе фильтров. Можно обновить без остановки доставки.",
+			"openBuilder": "Открыть конструктор"
+		},
+		"drafts": {
+			"title": "Черновики",
+			"subtitle": "Для проверки и A/B",
+			"allDrafts": "Все черновики",
+			"copy": "Скопировать черновик",
+			"updated": "Обновлено",
+			"openDraft": "Открыть черновик",
+			"createDraft": "Создать черновик",
+			"createDraftDescription": "Скопируйте готовый сценарий или начните с пустого"
+		}
+	},
+	"templates": {
+		"title": "Template Studio",
+		"description": "Создавайте шаблоны Telegram с переменными и предпросмотром.",
+		"newTemplate": "Новый шаблон"
+	},
+	"queues": {
+		"title": "Queue Monitor",
+		"description": "Контролируйте задачи, задержки и ретраи в реальном времени.",
+		"taskId": "ID задачи",
+		"workflow": "Workflow",
+		"channel": "Канал",
+		"attempts": "Попытки",
+		"status": "Статус"
+	}
+}

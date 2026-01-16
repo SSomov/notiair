@@ -7,7 +7,7 @@
 	let triggerMenuOpen = false;
 	let selectedTrigger = 'Добавить триггер';
 
-	type NodeVariant = 'trigger' | 'action' | 'channel';
+	type NodeVariant = 'trigger' | 'template' | 'channel';
 	type PortType = 'left' | 'right';
 
 	type CanvasNode = {
@@ -38,10 +38,10 @@
 			position: { x: 80, y: 140 },
 		},
 		{
-			id: 'action-node',
-			label: 'Action',
+			id: 'template-node',
+			label: 'Template',
 			description: 'Отправка уведомления',
-			variant: 'action',
+			variant: 'template',
 			position: { x: 360, y: 320 },
 		},
 		{
@@ -155,6 +155,78 @@
 		mousePosition = null;
 	}
 
+	function generateNodeId(variant: NodeVariant): string {
+		const existingIds = nodes.map((n) => n.id);
+		let counter = 1;
+		let newId = `${variant}-node-${counter}`;
+		while (existingIds.includes(newId)) {
+			counter++;
+			newId = `${variant}-node-${counter}`;
+		}
+		return newId;
+	}
+
+	function addChannelNode() {
+		const channelCount = nodes.filter((n) => n.variant === 'channel').length;
+		const newChannel: CanvasNode = {
+			id: generateNodeId('channel'),
+			label: 'Channel',
+			description: 'Новый канал доставки',
+			variant: 'channel',
+			position: { x: 200 + channelCount * 280, y: 200 + channelCount * 80 },
+		};
+		nodes = [...nodes, newChannel];
+	}
+
+	function addTemplateNode() {
+		const templateCount = nodes.filter((n) => n.variant === 'template').length;
+		const newTemplate: CanvasNode = {
+			id: generateNodeId('template'),
+			label: 'Template',
+			description: 'Новый шаблон',
+			variant: 'template',
+			position: { x: 150 + templateCount * 300, y: 180 + templateCount * 100 },
+		};
+		nodes = [...nodes, newTemplate];
+	}
+
+	function deleteNode(nodeId: string, event: MouseEvent) {
+		event.stopPropagation();
+		
+		// Удалить узел
+		nodes = nodes.filter((n) => n.id !== nodeId);
+		
+		// Удалить все связанные линии (edges)
+		edges = edges.filter(
+			(e) => e.from.nodeId !== nodeId && e.to.nodeId !== nodeId
+		);
+		
+		// Если удаляемый узел был в процессе соединения, отменить соединение
+		if (connecting?.nodeId === nodeId) {
+			connecting = null;
+		}
+	}
+
+	function deleteEdge(edgeId: string, event?: MouseEvent | KeyboardEvent) {
+		event?.stopPropagation();
+		edges = edges.filter((e) => e.id !== edgeId);
+	}
+
+	function getMidpoint(pathString: string): { x: number; y: number } | null {
+		// Парсим SVG path и находим точку на 50% длины
+		try {
+			const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+			path.setAttribute('d', pathString);
+			const length = path.getTotalLength();
+			const midpoint = path.getPointAtLength(length / 2);
+			return { x: midpoint.x, y: midpoint.y };
+		} catch {
+			return null;
+		}
+	}
+
+	let hoveredEdgeId: string | null = null;
+
 	function handleWorkspaceMouseMove(event: MouseEvent) {
 		if (connecting && workspaceElement) {
 			const rect = workspaceElement.getBoundingClientRect();
@@ -263,12 +335,14 @@
 				<button
 					type="button"
 					class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm"
+					on:click={addTemplateNode}
 				>
 					Добавить шаблонизатор
 				</button>
 				<button
 					type="button"
 					class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm"
+					on:click={addChannelNode}
 				>
 					Добавить канал
 				</button>
@@ -289,13 +363,64 @@
 			<!-- SVG слой для линий -->
 			<svg class="edges-layer">
 				{#each edgePaths as { id, path }}
-					<path
-						d={path}
-						stroke="#2563eb"
-						stroke-width="2"
-						fill="none"
-						class="edge-path"
-					/>
+					<!-- svelte-ignore a11y-no-static-element-interactions -->
+					<g
+						class="edge-group"
+						role="group"
+						on:mouseenter={() => (hoveredEdgeId = id)}
+						on:mouseleave={() => (hoveredEdgeId = null)}
+					>
+						<path
+							d={path}
+							stroke="#2563eb"
+							stroke-width="2"
+							fill="none"
+							class="edge-path"
+						/>
+						{#if hoveredEdgeId === id}
+							{@const midpoint = getMidpoint(path)}
+							{#if midpoint}
+								<!-- svelte-ignore a11y-click-events-have-key-events -->
+								<!-- svelte-ignore a11y-no-static-element-interactions -->
+								<g
+									class="edge-delete-button"
+									role="button"
+									tabindex="0"
+									transform="translate({midpoint.x}, {midpoint.y})"
+									on:click={(e) => deleteEdge(id, e)}
+									on:keydown={(e) => e.key === 'Enter' && deleteEdge(id)}
+								>
+									<circle
+										cx="0"
+										cy="0"
+										r="10"
+										fill="#fff"
+										stroke="#dc2626"
+										stroke-width="2"
+										class="edge-delete-circle"
+									/>
+									<line
+										x1="-4"
+										y1="-4"
+										x2="4"
+										y2="4"
+										stroke="#dc2626"
+										stroke-width="1.5"
+										stroke-linecap="round"
+									/>
+									<line
+										x1="4"
+										y1="-4"
+										x2="-4"
+										y2="4"
+										stroke="#dc2626"
+										stroke-width="1.5"
+										stroke-linecap="round"
+									/>
+								</g>
+							{/if}
+						{/if}
+					</g>
 				{/each}
 				{#if tempPath}
 					<path
@@ -321,7 +446,12 @@
 					}}
 					on:neodrag={(event) => handleDrag(event, node.id)}
 				>
-					<button type="button" class="edit-btn" aria-label="Редактировать ноду">
+					<button
+						type="button"
+						class="delete-btn"
+						aria-label="Удалить блок"
+						on:click={(e) => deleteNode(node.id, e)}
+					>
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 24 24"
@@ -331,26 +461,31 @@
 							class="h-4 w-4"
 						>
 							<path
-								d="M16.862 3.487 20.51 7.136a1.5 1.5 0 0 1 0 2.121l-9.193 9.193-4.593.511a1 1 0 0 1-1.1-1.1l.511-4.593 9.193-9.193a1.5 1.5 0 0 1 2.121 0Z"
+								d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
 							/>
-							<path d="M19 11.5 12.5 5" />
+							<line x1="10" y1="11" x2="10" y2="17" />
+							<line x1="14" y1="11" x2="14" y2="17" />
 						</svg>
 					</button>
 					<div class="connectors">
-						<button
-							type="button"
-							class="connector right"
-							class:active={connecting?.nodeId === node.id && connecting?.port === 'right'}
-							on:click={(e) => handleConnectorClick(node.id, 'right', e)}
-							aria-label="Правая точка подключения"
-						></button>
-						<button
-							type="button"
-							class="connector left"
-							class:active={connecting?.nodeId === node.id && connecting?.port === 'left'}
-							on:click={(e) => handleConnectorClick(node.id, 'left', e)}
-							aria-label="Левая точка подключения"
-						></button>
+						{#if node.variant !== 'channel'}
+							<button
+								type="button"
+								class="connector right"
+								class:active={connecting?.nodeId === node.id && connecting?.port === 'right'}
+								on:click={(e) => handleConnectorClick(node.id, 'right', e)}
+								aria-label="Правая точка подключения"
+							></button>
+						{/if}
+						{#if node.variant !== 'trigger'}
+							<button
+								type="button"
+								class="connector left"
+								class:active={connecting?.nodeId === node.id && connecting?.port === 'left'}
+								on:click={(e) => handleConnectorClick(node.id, 'left', e)}
+								aria-label="Левая точка подключения"
+							></button>
+						{/if}
 					</div>
 					<span class="node-label">{node.label}</span>
 					<p class="node-desc">{node.description}</p>
@@ -418,7 +553,7 @@
 		cursor: grabbing;
 	}
 
-	.edit-btn {
+	.delete-btn {
 		position: absolute;
 		top: 0.75rem;
 		right: 0.75rem;
@@ -435,9 +570,10 @@
 		transition: 120ms ease;
 	}
 
-	.edit-btn:hover {
-		color: #2563eb;
-		border-color: rgba(37, 99, 235, 0.5);
+	.delete-btn:hover {
+		color: #dc2626;
+		border-color: rgba(220, 38, 38, 0.5);
+		background: rgba(220, 38, 38, 0.1);
 		transform: translateY(-1px);
 	}
 
@@ -459,7 +595,7 @@
 		color: #64748b;
 	}
 
-	.node.action {
+	.node.template {
 		background: rgba(59, 130, 246, 0.08);
 	}
 
@@ -482,13 +618,32 @@
 		cursor: pointer;
 	}
 
+	.edge-group {
+		cursor: pointer;
+	}
+
 	.edge-path {
 		transition: stroke 0.2s ease;
 	}
 
-	.edge-path:hover {
+	.edge-group:hover .edge-path {
 		stroke: #1d4ed8;
 		stroke-width: 2.5;
+	}
+
+	.edge-delete-button {
+		cursor: pointer;
+		pointer-events: all;
+	}
+
+	.edge-delete-circle {
+		transition: all 0.2s ease;
+	}
+
+	.edge-delete-button:hover .edge-delete-circle {
+		fill: #fee2e2;
+		stroke: #b91c1c;
+		transform: scale(1.1);
 	}
 
 	.temp-edge-path {
