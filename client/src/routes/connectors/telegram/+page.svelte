@@ -1,59 +1,59 @@
 <script lang="ts">
-  type TelegramToken = {
-    id: string;
-    secret: string;
-    comment: string;
-  };
+type TelegramToken = {
+	id: string;
+	secret: string;
+	comment: string;
+};
 
-  let tokens: TelegramToken[] = [];
+let tokens: TelegramToken[] = [];
 
-  let tokenModalOpen = false;
-  let editingToken: TelegramToken | null = null;
-  let secretInput = '';
-  let commentInput = '';
+let _tokenModalOpen = false;
+let editingToken: TelegramToken | null = null;
+let secretInput = "";
+let commentInput = "";
 
-  function openTokenModal(token?: TelegramToken) {
-    editingToken = token || null;
-    secretInput = token?.secret || '';
-    commentInput = token?.comment || '';
-    tokenModalOpen = true;
-  }
+function _openTokenModal(token?: TelegramToken) {
+	editingToken = token || null;
+	secretInput = token?.secret || "";
+	commentInput = token?.comment || "";
+	_tokenModalOpen = true;
+}
 
-  function closeTokenModal() {
-    tokenModalOpen = false;
-    editingToken = null;
-    secretInput = '';
-    commentInput = '';
-  }
+function closeTokenModal() {
+	_tokenModalOpen = false;
+	editingToken = null;
+	secretInput = "";
+	commentInput = "";
+}
 
-  function saveToken() {
-    if (!secretInput.trim()) return;
+function _saveToken() {
+	if (!secretInput.trim()) return;
 
-    if (editingToken) {
-      tokens = tokens.map((token) =>
-        token.id === editingToken.id
-          ? { ...token, secret: secretInput.trim(), comment: commentInput.trim() }
-          : token
-      );
-    } else {
-      const nextIndex = tokens.length + 1;
-      const id = `#TG-${String(nextIndex).padStart(3, '0')}`;
-      tokens = [
-        ...tokens,
-        {
-          id,
-          secret: secretInput.trim(),
-          comment: commentInput.trim()
-        }
-      ];
-    }
+	if (editingToken) {
+		tokens = tokens.map((token) =>
+			token.id === editingToken.id
+				? { ...token, secret: secretInput.trim(), comment: commentInput.trim() }
+				: token,
+		);
+	} else {
+		const nextIndex = tokens.length + 1;
+		const id = `#TG-${String(nextIndex).padStart(3, "0")}`;
+		tokens = [
+			...tokens,
+			{
+				id,
+				secret: secretInput.trim(),
+				comment: commentInput.trim(),
+			},
+		];
+	}
 
-    closeTokenModal();
-  }
+	closeTokenModal();
+}
 
-  function deleteToken(id: string) {
-    tokens = tokens.filter((token) => token.id !== id);
-  }
+function _deleteToken(id: string) {
+	tokens = tokens.filter((token) => token.id !== id);
+}
 </script>
 
 <section class="space-y-8 px-4 pb-12 pt-2 md:px-12 md:pt-4">

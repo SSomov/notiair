@@ -1,23 +1,23 @@
 <script lang="ts">
-	import { workflowStore } from '@stores/workflows';
-	import { t } from '$lib/i18n';
+import { t } from "$lib/i18n";
+import { workflowStore } from "@stores/workflows";
 
-	const draftBlueprints = [
-		{
-			id: 'draft-approval-flow',
-			name: 'Approval flow v2',
-			hint: 'Пауза + ручное подтверждение перед отправкой',
-			updated: '2 часа назад',
-		},
-		{
-			id: 'draft-personalized',
-			name: 'Personalized onboarding',
-			hint: 'Сегменты по гео и активности',
-			updated: 'вчера',
-		},
-	];
+const draftBlueprints = [
+	{
+		id: "draft-approval-flow",
+		name: "Approval flow v2",
+		hint: "Пауза + ручное подтверждение перед отправкой",
+		updated: "2 часа назад",
+	},
+	{
+		id: "draft-personalized",
+		name: "Personalized onboarding",
+		hint: "Сегменты по гео и активности",
+		updated: "вчера",
+	},
+];
 
-	$: activeWorkflows = $workflowStore;
+$: activeWorkflows = $workflowStore;
 </script>
 
 <section class="space-y-8 px-4 pb-12 pt-2 md:px-12 md:pt-4">

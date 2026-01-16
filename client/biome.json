@@ -6,7 +6,8 @@
 		"useIgnoreFile": false
 	},
 	"files": {
-		"ignoreUnknown": false
+		"ignoreUnknown": false,
+		"includes": ["**", "!**/*.css", "!.svelte-kit"]
 	},
 	"formatter": {
 		"enabled": true,
@@ -19,8 +20,8 @@
 			"correctness": {},
 			"style": {
 				"useConst": {
-				  "level": "warn",
-				  "fix": "unsafe"
+					"level": "warn",
+					"fix": "unsafe"
 				}
 			}
 		}

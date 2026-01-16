@@ -1,20 +1,20 @@
 <script lang="ts">
-  import '../app.css';
-  import { t, locale, loadTranslations } from '$lib/i18n';
-  import { page } from '$app/stores';
-  import { switchLocale } from '$lib/i18n/utils';
-  import type { PageData } from './$types';
+import "../app.css";
+import { t, locale } from "$lib/i18n";
+import { page } from "$app/stores";
+import { switchLocale } from "$lib/i18n/utils";
+import type { PageData } from "./$types";
 
-  export let data: PageData;
+export let data: PageData;
 
-  $: currentLocale = data.locale || 'en';
+$: currentLocale = data.locale || "en";
 
-  async function switchLanguage() {
-    const newLocale = currentLocale === 'ru' ? 'en' : 'ru';
-    
-    locale.set(newLocale);
-    await switchLocale($page.url.pathname, newLocale, currentLocale);
-  }
+async function switchLanguage() {
+	const newLocale = currentLocale === "ru" ? "en" : "ru";
+
+	locale.set(newLocale);
+	await switchLocale($page.url.pathname, newLocale, currentLocale);
+}
 </script>
 
 <header class="sticky top-0 z-40 w-full border-b border-border bg-surface/95 shadow-sm backdrop-blur">

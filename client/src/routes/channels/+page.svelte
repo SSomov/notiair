@@ -1,165 +1,197 @@
 <script lang="ts">
-  type ChannelLink = {
-    name: string;
-    description: string;
-    muted: boolean;
-  };
+type ChannelLink = {
+	name: string;
+	description: string;
+	muted: boolean;
+};
 
-  type ConnectorEntry = {
-    id: string;
-    comment: string;
-    channels: ChannelLink[];
-  };
+type ConnectorEntry = {
+	id: string;
+	comment: string;
+	channels: ChannelLink[];
+};
 
-  type ChannelGroup = {
-    slug: 'telegram' | 'slack' | 'smtp';
-    name: string;
-    icon: string;
-    color: string;
-    description: string;
-    connectors: ConnectorEntry[];
-  };
+type ChannelGroup = {
+	slug: "telegram" | "slack" | "smtp";
+	name: string;
+	icon: string;
+	color: string;
+	description: string;
+	connectors: ConnectorEntry[];
+};
 
+let groups: ChannelGroup[] = [
+	{
+		slug: "telegram",
+		name: "Telegram",
+		icon: "✈️",
+		color: "text-accent",
+		description: "Боты и каналы Telegram.",
+		connectors: [
+			{
+				id: "#TG-001",
+				comment: "Основной токен для product-уведомлений",
+				channels: [
+					{
+						name: "@product-updates",
+						description: "Редакционные апдейты и релизы",
+						muted: false,
+					},
+					{
+						name: "@support",
+						description: "Поддержка клиентов и эскалации",
+						muted: false,
+					},
+				],
+			},
+		],
+	},
+	{
+		slug: "slack",
+		name: "Slack",
+		icon: "💬",
+		color: "text-warning",
+		description: "Каналы Slack.",
+		connectors: [
+			{
+				id: "#SL-001",
+				comment: "Workspace alerts",
+				channels: [
+					{
+						name: "#on-call",
+						description: "Дежурная смена и инциденты",
+						muted: false,
+					},
+					{
+						name: "#marketing",
+						description: "Коммуникации маркетинга",
+						muted: false,
+					},
+				],
+			},
+		],
+	},
+	{
+		slug: "smtp",
+		name: "SMTP",
+		icon: "📧",
+		color: "text-positive",
+		description: "Почтовые рассылки и транзакционные письма.",
+		connectors: [
+			{
+				id: "#SM-001",
+				comment: "Primary transactional SMTP",
+				channels: [
+					{
+						name: "alerts@notiair",
+						description: "Оповещения инфраструктуры",
+						muted: false,
+					},
+					{
+						name: "billing@notiair",
+						description: "Счета и биллинговые уведомления",
+						muted: false,
+					},
+				],
+			},
+		],
+	},
+];
 
-  let groups: ChannelGroup[] = [
-    {
-      slug: 'telegram',
-      name: 'Telegram',
-      icon: '✈️',
-      color: 'text-accent',
-      description: 'Боты и каналы Telegram.',
-      connectors: [
-        {
-          id: '#TG-001',
-          comment: 'Основной токен для product-уведомлений',
-          channels: [
-            { name: '@product-updates', description: 'Редакционные апдейты и релизы', muted: false },
-            { name: '@support', description: 'Поддержка клиентов и эскалации', muted: false }
-          ]
-        }
-      ]
-    },
-    {
-      slug: 'slack',
-      name: 'Slack',
-      icon: '💬',
-      color: 'text-warning',
-      description: 'Каналы Slack.',
-      connectors: [
-        {
-          id: '#SL-001',
-          comment: 'Workspace alerts',
-          channels: [
-            { name: '#on-call', description: 'Дежурная смена и инциденты', muted: false },
-            { name: '#marketing', description: 'Коммуникации маркетинга', muted: false }
-          ]
-        }
-      ]
-    },
-    {
-      slug: 'smtp',
-      name: 'SMTP',
-      icon: '📧',
-      color: 'text-positive',
-      description: 'Почтовые рассылки и транзакционные письма.',
-      connectors: [
-        {
-          id: '#SM-001',
-          comment: 'Primary transactional SMTP',
-          channels: [
-            { name: 'alerts@notiair', description: 'Оповещения инфраструктуры', muted: false },
-            { name: 'billing@notiair', description: 'Счета и биллинговые уведомления', muted: false }
-          ]
-        }
-      ]
-    }
-  ];
+let activeGroup: ChannelGroup | null = null;
+let activeEntry: ConnectorEntry | null = null;
+let channelInput = "";
+let channelDescription = "";
+let _channelModalOpen = false;
 
-  let activeGroup: ChannelGroup | null = null;
-  let activeEntry: ConnectorEntry | null = null;
-  let channelInput = '';
-  let channelDescription = '';
-  let channelModalOpen = false;
+function _openChannelModal(group: ChannelGroup, entry: ConnectorEntry) {
+	activeGroup = group;
+	activeEntry = entry;
+	channelInput = "";
+	channelDescription = "";
+	_channelModalOpen = true;
+}
 
+function closeModal() {
+	_channelModalOpen = false;
+	activeGroup = null;
+	activeEntry = null;
+	channelInput = "";
+	channelDescription = "";
+}
 
-  function openChannelModal(group: ChannelGroup, entry: ConnectorEntry) {
-    activeGroup = group;
-    activeEntry = entry;
-    channelInput = '';
-    channelDescription = '';
-    channelModalOpen = true;
-  }
+function _saveChannel() {
+	if (!activeGroup || !activeEntry || !channelInput.trim()) return;
+	const value = channelInput.trim();
+	const description = channelDescription.trim();
 
-  function closeModal() {
-    channelModalOpen = false;
-    activeGroup = null;
-    activeEntry = null;
-    channelInput = '';
-    channelDescription = '';
-  }
+	groups = groups.map((group) => {
+		if (group.slug !== activeGroup?.slug) return group;
+		return {
+			...group,
+			connectors: group.connectors.map((entry) =>
+				entry.id === activeEntry.id
+					? {
+							...entry,
+							channels: [
+								...entry.channels,
+								{ name: value, description, muted: false },
+							],
+						}
+					: entry,
+			),
+		};
+	});
+	closeModal();
+}
 
+function _removeChannel(
+	groupSlug: ChannelGroup["slug"],
+	connectorId: string,
+	channelName: string,
+) {
+	groups = groups.map((group) => {
+		if (group.slug !== groupSlug) return group;
+		return {
+			...group,
+			connectors: group.connectors.map((entry) =>
+				entry.id === connectorId
+					? {
+							...entry,
+							channels: entry.channels.filter(
+								(channel) => channel.name !== channelName,
+							),
+						}
+					: entry,
+			),
+		};
+	});
+}
 
-  function saveChannel() {
-    if (!activeGroup || !activeEntry || !channelInput.trim()) return;
-    const value = channelInput.trim();
-    const description = channelDescription.trim();
-
-    groups = groups.map((group) => {
-      if (group.slug !== activeGroup?.slug) return group;
-      return {
-        ...group,
-        connectors: group.connectors.map((entry) =>
-          entry.id === activeEntry.id
-            ? {
-                ...entry,
-                channels: [...entry.channels, { name: value, description, muted: false }]
-              }
-            : entry
-        )
-      };
-    });
-    closeModal();
-  }
-
-  function removeChannel(groupSlug: ChannelGroup['slug'], connectorId: string, channelName: string) {
-    groups = groups.map((group) => {
-      if (group.slug !== groupSlug) return group;
-      return {
-        ...group,
-        connectors: group.connectors.map((entry) =>
-          entry.id === connectorId
-            ? {
-                ...entry,
-                channels: entry.channels.filter((channel) => channel.name !== channelName)
-              }
-            : entry
-        )
-      };
-    });
-  }
-
-  function toggleMute(
-    groupSlug: ChannelGroup['slug'],
-    connectorId: string,
-    channelName: string
-  ) {
-    groups = groups.map((group) => {
-      if (group.slug !== groupSlug) return group;
-      return {
-        ...group,
-        connectors: group.connectors.map((entry) =>
-          entry.id === connectorId
-            ? {
-                ...entry,
-                channels: entry.channels.map((channel) =>
-                  channel.name === channelName ? { ...channel, muted: !channel.muted } : channel
-                )
-              }
-            : entry
-        )
-      };
-    });
-  }
+function _toggleMute(
+	groupSlug: ChannelGroup["slug"],
+	connectorId: string,
+	channelName: string,
+) {
+	groups = groups.map((group) => {
+		if (group.slug !== groupSlug) return group;
+		return {
+			...group,
+			connectors: group.connectors.map((entry) =>
+				entry.id === connectorId
+					? {
+							...entry,
+							channels: entry.channels.map((channel) =>
+								channel.name === channelName
+									? { ...channel, muted: !channel.muted }
+									: channel,
+							),
+						}
+					: entry,
+			),
+		};
+	});
+}
 </script>
 
 <section class="space-y-8 px-4 pb-12 pt-2 md:px-12 md:pt-4">

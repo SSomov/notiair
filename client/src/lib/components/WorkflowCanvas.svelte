@@ -1,10 +1,10 @@
 <script lang="ts">
-	import type { Writable } from 'svelte/store';
-	import type { WorkflowDraft } from '@types/workflow';
+import type { WorkflowDraft } from "@types/workflow";
+import type { Writable } from "svelte/store";
 
-	export let workflows: Writable<WorkflowDraft[]>;
+export let workflows: Writable<WorkflowDraft[]>;
 
-	$: workflowCount = $workflows.length;
+$: workflowCount = $workflows.length;
 </script>
 
 <div class="glass-card h-[640px] w-full border-dashed border-border/60 bg-surface/60 p-0">

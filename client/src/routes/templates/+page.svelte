@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { templateStore } from '@stores/templates';
-	import { t } from '$lib/i18n';
+import { t } from "$lib/i18n";
+import { templateStore } from "@stores/templates";
 
-	const templates = templateStore;
+const templates = templateStore;
 </script>
 
 <section class="space-y-8 px-4 pb-12 pt-2 md:px-12 md:pt-4">

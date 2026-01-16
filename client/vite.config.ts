@@ -1,5 +1,5 @@
-import { sveltekit } from '@sveltejs/kit/vite';
-import { defineConfig } from 'vite';
+import { sveltekit } from "@sveltejs/kit/vite";
+import { defineConfig } from "vite";
 
 export default defineConfig({
 	plugins: [sveltekit()],
@@ -8,15 +8,15 @@ export default defineConfig({
 		// Проксирование в dev режиме (для SSR=false)
 		// В production hooks.server.ts обрабатывает проксирование
 		proxy:
-			process.env.NODE_ENV === 'production'
+			process.env.NODE_ENV === "production"
 				? {}
 				: {
-						'/api': {
-							target: process.env.PUBLIC_API_URL || 'http://127.0.0.1:8080',
+						"/api": {
+							target: process.env.PUBLIC_API_URL || "http://127.0.0.1:8080",
 							changeOrigin: true,
 						},
-						'/sub': {
-							target: process.env.PUBLIC_API_URL || 'http://127.0.0.1:8080',
+						"/sub": {
+							target: process.env.PUBLIC_API_URL || "http://127.0.0.1:8080",
 							changeOrigin: true,
 						},
 					},

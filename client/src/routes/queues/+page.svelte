@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { queueStore } from '@stores/queues';
-	import { t } from '$lib/i18n';
+import { t } from "$lib/i18n";
+import { queueStore } from "@stores/queues";
 
-	const queue = queueStore;
+const queue = queueStore;
 </script>
 
 <section class="space-y-6">

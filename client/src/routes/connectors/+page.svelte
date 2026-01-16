@@ -1,107 +1,107 @@
 <script lang="ts">
-  type Connector = {
-    slug: 'telegram' | 'slack' | 'smtp';
-    name: string;
-    description: string;
-    badge: string;
-    color: string;
-    placeholder: string;
-    comingSoon?: boolean;
-  };
+type Connector = {
+	slug: "telegram" | "slack" | "smtp";
+	name: string;
+	description: string;
+	badge: string;
+	color: string;
+	placeholder: string;
+	comingSoon?: boolean;
+};
 
-  const connectors: Connector[] = [
-    {
-      slug: 'telegram',
-      name: 'Telegram',
-      description: 'Токены ботов и канала для маршрутизации.',
-      badge: 'messenger',
-      color: 'text-accent',
-      placeholder: 'Введите Bot API Token'
-    },
-    {
-      slug: 'slack',
-      name: 'Slack',
-      description: 'Вебхуки и workspace токены для уведомлений.',
-      badge: 'chat',
-      color: 'text-warning',
-      placeholder: 'Введите Slack webhook URL или token',
-      comingSoon: true
-    },
-    {
-      slug: 'smtp',
-      name: 'SMTP',
-      description: 'SMTP credentials для доставки писем.',
-      badge: 'mail',
-      color: 'text-positive',
-      placeholder: 'Введите SMTP connection string',
-      comingSoon: true
-    }
-  ];
+const connectors: Connector[] = [
+	{
+		slug: "telegram",
+		name: "Telegram",
+		description: "Токены ботов и канала для маршрутизации.",
+		badge: "messenger",
+		color: "text-accent",
+		placeholder: "Введите Bot API Token",
+	},
+	{
+		slug: "slack",
+		name: "Slack",
+		description: "Вебхуки и workspace токены для уведомлений.",
+		badge: "chat",
+		color: "text-warning",
+		placeholder: "Введите Slack webhook URL или token",
+		comingSoon: true,
+	},
+	{
+		slug: "smtp",
+		name: "SMTP",
+		description: "SMTP credentials для доставки писем.",
+		badge: "mail",
+		color: "text-positive",
+		placeholder: "Введите SMTP connection string",
+		comingSoon: true,
+	},
+];
 
-  type Note = {
-    id: string;
-    secret: string;
-    comment: string;
-  };
+type Note = {
+	id: string;
+	secret: string;
+	comment: string;
+};
 
-  let notes: Record<Connector['slug'], Note[]> = {
-    telegram: [],
-    slack: [],
-    smtp: []
-  };
+let notes: Record<Connector["slug"], Note[]> = {
+	telegram: [],
+	slack: [],
+	smtp: [],
+};
 
-  let modalOpen = false;
-  let current: Connector | null = null;
-  let secretInput = '';
-  let commentInput = '';
+let _modalOpen = false;
+let current: Connector | null = null;
+let secretInput = "";
+let commentInput = "";
 
-  function openModal(connector: Connector) {
-    current = connector;
-    secretInput = '';
-    commentInput = '';
-    modalOpen = true;
-  }
+function _openModal(connector: Connector) {
+	current = connector;
+	secretInput = "";
+	commentInput = "";
+	_modalOpen = true;
+}
 
-  function closeModal() {
-    modalOpen = false;
-    current = null;
-  }
+function closeModal() {
+	_modalOpen = false;
+	current = null;
+}
 
-  function saveConnector() {
-    if (!current) return;
-    const existingNotes = notes[current.slug];
-    const nextIndex = existingNotes.length + 1;
-    const id = `#${current.slug.slice(0, 2).toUpperCase()}-${String(nextIndex).padStart(3, '0')}`;
+function _saveConnector() {
+	if (!current) return;
+	const existingNotes = notes[current.slug];
+	const nextIndex = existingNotes.length + 1;
+	const id = `#${current.slug.slice(0, 2).toUpperCase()}-${String(nextIndex).padStart(3, "0")}`;
 
-    notes = {
-      ...notes,
-      [current.slug]: [
-        ...existingNotes,
-        {
-          id,
-          secret: secretInput.trim(),
-          comment: commentInput.trim()
-        }
-      ]
-    };
+	notes = {
+		...notes,
+		[current.slug]: [
+			...existingNotes,
+			{
+				id,
+				secret: secretInput.trim(),
+				comment: commentInput.trim(),
+			},
+		],
+	};
 
-    closeModal();
-  }
+	closeModal();
+}
 
-  function editNote(slug: Connector['slug'], note: Note) {
-    current = connectors.find((c) => c.slug === slug) ?? null;
-    if (!current) return;
-    secretInput = note.secret;
-    commentInput = note.comment;
-    modalOpen = true;
-  }
+function _editNote(slug: Connector["slug"], note: Note) {
+	current = connectors.find((c) => c.slug === slug) ?? null;
+	if (!current) return;
+	secretInput = note.secret;
+	commentInput = note.comment;
+	_modalOpen = true;
+}
 
-  function deleteNote(slug: Connector['slug'], id: string) {
-    notes = {
-      ...notes,
-      [slug]: notes[slug].filter((note) => note.id !== id)
-    };
-  }
+function _deleteNote(slug: Connector["slug"], id: string) {
+	notes = {
+		...notes,
+		[slug]: notes[slug].filter((note) => note.id !== id),
+	};
+}
 </script>
 
 <section class="space-y-8 px-4 pb-12 pt-2 md:px-12 md:pt-4">

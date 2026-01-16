@@ -1,4 +1,4 @@
-export type WorkflowNodeType = 'trigger' | 'filter' | 'action';
+export type WorkflowNodeType = "trigger" | "filter" | "action";
 
 export type WorkflowNode = {
 	id: string;

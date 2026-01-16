@@ -1,260 +1,273 @@
 <script lang="ts">
-	import { draggable } from '@neodrag/svelte';
-	import type { DragEventData } from '@neodrag/svelte';
-	import { tick } from 'svelte';
+import type { DragEventData } from "@neodrag/svelte";
+import { tick } from "svelte";
 
-	const triggerOptions = ['API', 'HTTP Webhook', 'Cron', 'Manual'];
-	let triggerMenuOpen = false;
-	let selectedTrigger = 'Добавить триггер';
+const _triggerOptions = ["API", "HTTP Webhook", "Cron", "Manual"];
+let _triggerMenuOpen = false;
+let _selectedTrigger = "Добавить триггер";
 
-	type NodeVariant = 'trigger' | 'template' | 'channel';
-	type PortType = 'left' | 'right';
+type NodeVariant = "trigger" | "template" | "channel";
+type PortType = "left" | "right";
 
-	type CanvasNode = {
-		id: string;
-		label: string;
-		description: string;
-		variant: NodeVariant;
-		position: { x: number; y: number };
-	};
+type CanvasNode = {
+	id: string;
+	label: string;
+	description: string;
+	variant: NodeVariant;
+	position: { x: number; y: number };
+};
 
-	type Edge = {
-		id: string;
-		from: { nodeId: string; port: PortType };
-		to: { nodeId: string; port: PortType };
-	};
+type Edge = {
+	id: string;
+	from: { nodeId: string; port: PortType };
+	to: { nodeId: string; port: PortType };
+};
 
-	type ConnectingState = {
-		nodeId: string;
-		port: PortType;
-	} | null;
+type ConnectingState = {
+	nodeId: string;
+	port: PortType;
+} | null;
 
-	let nodes: CanvasNode[] = [
-		{
-			id: 'trigger-node',
-			label: 'Trigger',
-			description: 'Выберите событие запуска',
-			variant: 'trigger',
-			position: { x: 80, y: 140 },
-		},
-		{
-			id: 'template-node',
-			label: 'Template',
-			description: 'Отправка уведомления',
-			variant: 'template',
-			position: { x: 360, y: 320 },
-		},
-		{
-			id: 'channel-node',
-			label: 'Channel',
-			description: 'Telegram · @product-updates',
-			variant: 'channel',
-			position: { x: 640, y: 160 },
-		},
-	];
+let nodes: CanvasNode[] = [
+	{
+		id: "trigger-node",
+		label: "Trigger",
+		description: "Выберите событие запуска",
+		variant: "trigger",
+		position: { x: 80, y: 140 },
+	},
+	{
+		id: "template-node",
+		label: "Template",
+		description: "Отправка уведомления",
+		variant: "template",
+		position: { x: 360, y: 320 },
+	},
+	{
+		id: "channel-node",
+		label: "Channel",
+		description: "Telegram · @product-updates",
+		variant: "channel",
+		position: { x: 640, y: 160 },
+	},
+];
 
-	let edges: Edge[] = [];
-	let connecting: ConnectingState = null;
-	let mousePosition: { x: number; y: number } | null = null;
-	let workspaceElement: HTMLDivElement;
+let edges: Edge[] = [];
+let connecting: ConnectingState = null;
+let mousePosition: { x: number; y: number } | null = null;
+let workspaceElement: HTMLDivElement;
 
-	function selectTrigger(option: string) {
-		selectedTrigger = option;
-		triggerMenuOpen = false;
-		nodes = nodes.map((node) =>
-			node.variant === 'trigger'
-				? {
-						...node,
-						description: option === 'Добавить триггер' ? 'Выберите событие запуска' : option,
-					}
-				: node
-		);
-	}
-
-	async function handleDrag({ detail }: CustomEvent<DragEventData>, id: string) {
-		nodes = nodes.map((node) =>
-			node.id === id
-				? {
-						...node,
-						position: {
-							x: detail.offsetX,
-							y: detail.offsetY,
-						},
-					}
-				: node
-		);
-		// Ждем обновления DOM перед пересчетом линий
-		await tick();
-		// Принудительно обновляем реактивность для edgePaths
-		nodes = [...nodes];
-	}
-
-	function getConnectorPosition(nodeId: string, port: PortType): { x: number; y: number } | null {
-		const node = nodes.find((n) => n.id === nodeId);
-		if (!node || !workspaceElement) return null;
-
-		// Найти DOM элемент ноды и коннектора для точного расчета координат
-		const nodeElement = document.querySelector(`[data-node-id="${nodeId}"]`) as HTMLElement;
-		if (!nodeElement) return null;
-
-		// Найти конкретный коннектор (left или right)
-		const connectorElement = nodeElement.querySelector(`.connector.${port}`) as HTMLElement;
-		if (!connectorElement) return null;
-
-		// Получить координаты коннектора относительно viewport
-		const connectorRect = connectorElement.getBoundingClientRect();
-		const workspaceRect = workspaceElement.getBoundingClientRect();
-
-		// Вычислить координаты центра коннектора (10px x 10px, центр на 5px от краев)
-		const connectorCenterX = connectorRect.left + connectorRect.width / 2 - workspaceRect.left;
-		const connectorCenterY = connectorRect.top + connectorRect.height / 2 - workspaceRect.top;
-
-		return { x: connectorCenterX, y: connectorCenterY };
-	}
-
-	function handleConnectorClick(nodeId: string, port: PortType, event: MouseEvent) {
-		event.stopPropagation();
-
-		if (connecting) {
-			// Завершаем соединение
-			if (connecting.nodeId !== nodeId || connecting.port !== port) {
-				// Не позволяем соединять точку с самой собой
-				const edgeId = `${connecting.nodeId}-${connecting.port}-${nodeId}-${port}`;
-				const newEdge: Edge = {
-					id: edgeId,
-					from: connecting,
-					to: { nodeId, port },
-				};
-
-				// Проверяем, нет ли уже такого соединения
-				const exists = edges.some(
-					(e) =>
-						(e.from.nodeId === newEdge.from.nodeId &&
-							e.from.port === newEdge.from.port &&
-							e.to.nodeId === newEdge.to.nodeId &&
-							e.to.port === newEdge.to.port) ||
-						(e.from.nodeId === newEdge.to.nodeId &&
-							e.from.port === newEdge.to.port &&
-							e.to.nodeId === newEdge.from.nodeId &&
-							e.to.port === newEdge.from.port)
-				);
-
-				if (!exists) {
-					edges = [...edges, newEdge];
+function _selectTrigger(option: string) {
+	_selectedTrigger = option;
+	_triggerMenuOpen = false;
+	nodes = nodes.map((node) =>
+		node.variant === "trigger"
+			? {
+					...node,
+					description:
+						option === "Добавить триггер" ? "Выберите событие запуска" : option,
 				}
-			}
-			connecting = null;
-		} else {
-			// Начинаем новое соединение
-			connecting = { nodeId, port };
-		}
-	}
+			: node,
+	);
+}
 
-	function cancelConnection() {
-		connecting = null;
-		mousePosition = null;
-	}
+async function _handleDrag({ detail }: CustomEvent<DragEventData>, id: string) {
+	nodes = nodes.map((node) =>
+		node.id === id
+			? {
+					...node,
+					position: {
+						x: detail.offsetX,
+						y: detail.offsetY,
+					},
+				}
+			: node,
+	);
+	// Ждем обновления DOM перед пересчетом линий
+	await tick();
+	// Принудительно обновляем реактивность для edgePaths
+	nodes = [...nodes];
+}
 
-	function generateNodeId(variant: NodeVariant): string {
-		const existingIds = nodes.map((n) => n.id);
-		let counter = 1;
-		let newId = `${variant}-node-${counter}`;
-		while (existingIds.includes(newId)) {
-			counter++;
-			newId = `${variant}-node-${counter}`;
-		}
-		return newId;
-	}
+function getConnectorPosition(
+	nodeId: string,
+	port: PortType,
+): { x: number; y: number } | null {
+	const node = nodes.find((n) => n.id === nodeId);
+	if (!node || !workspaceElement) return null;
 
-	function addChannelNode() {
-		const channelCount = nodes.filter((n) => n.variant === 'channel').length;
-		const newChannel: CanvasNode = {
-			id: generateNodeId('channel'),
-			label: 'Channel',
-			description: 'Новый канал доставки',
-			variant: 'channel',
-			position: { x: 200 + channelCount * 280, y: 200 + channelCount * 80 },
-		};
-		nodes = [...nodes, newChannel];
-	}
+	// Найти DOM элемент ноды и коннектора для точного расчета координат
+	const nodeElement = document.querySelector(
+		`[data-node-id="${nodeId}"]`,
+	) as HTMLElement;
+	if (!nodeElement) return null;
 
-	function addTemplateNode() {
-		const templateCount = nodes.filter((n) => n.variant === 'template').length;
-		const newTemplate: CanvasNode = {
-			id: generateNodeId('template'),
-			label: 'Template',
-			description: 'Новый шаблон',
-			variant: 'template',
-			position: { x: 150 + templateCount * 300, y: 180 + templateCount * 100 },
-		};
-		nodes = [...nodes, newTemplate];
-	}
+	// Найти конкретный коннектор (left или right)
+	const connectorElement = nodeElement.querySelector(
+		`.connector.${port}`,
+	) as HTMLElement;
+	if (!connectorElement) return null;
 
-	function deleteNode(nodeId: string, event: MouseEvent) {
-		event.stopPropagation();
-		
-		// Удалить узел
-		nodes = nodes.filter((n) => n.id !== nodeId);
-		
-		// Удалить все связанные линии (edges)
-		edges = edges.filter(
-			(e) => e.from.nodeId !== nodeId && e.to.nodeId !== nodeId
-		);
-		
-		// Если удаляемый узел был в процессе соединения, отменить соединение
-		if (connecting?.nodeId === nodeId) {
-			connecting = null;
-		}
-	}
+	// Получить координаты коннектора относительно viewport
+	const connectorRect = connectorElement.getBoundingClientRect();
+	const workspaceRect = workspaceElement.getBoundingClientRect();
 
-	function deleteEdge(edgeId: string, event?: MouseEvent | KeyboardEvent) {
-		event?.stopPropagation();
-		edges = edges.filter((e) => e.id !== edgeId);
-	}
+	// Вычислить координаты центра коннектора (10px x 10px, центр на 5px от краев)
+	const connectorCenterX =
+		connectorRect.left + connectorRect.width / 2 - workspaceRect.left;
+	const connectorCenterY =
+		connectorRect.top + connectorRect.height / 2 - workspaceRect.top;
 
-	function getMidpoint(pathString: string): { x: number; y: number } | null {
-		// Парсим SVG path и находим точку на 50% длины
-		try {
-			const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-			path.setAttribute('d', pathString);
-			const length = path.getTotalLength();
-			const midpoint = path.getPointAtLength(length / 2);
-			return { x: midpoint.x, y: midpoint.y };
-		} catch {
-			return null;
-		}
-	}
+	return { x: connectorCenterX, y: connectorCenterY };
+}
 
-	let hoveredEdgeId: string | null = null;
+function _handleConnectorClick(
+	nodeId: string,
+	port: PortType,
+	event: MouseEvent,
+) {
+	event.stopPropagation();
 
-	function handleWorkspaceMouseMove(event: MouseEvent) {
-		if (connecting && workspaceElement) {
-			const rect = workspaceElement.getBoundingClientRect();
-			mousePosition = {
-				x: event.clientX - rect.left,
-				y: event.clientY - rect.top,
+	if (connecting) {
+		// Завершаем соединение
+		if (connecting.nodeId !== nodeId || connecting.port !== port) {
+			// Не позволяем соединять точку с самой собой
+			const edgeId = `${connecting.nodeId}-${connecting.port}-${nodeId}-${port}`;
+			const newEdge: Edge = {
+				id: edgeId,
+				from: connecting,
+				to: { nodeId, port },
 			};
+
+			// Проверяем, нет ли уже такого соединения
+			const exists = edges.some(
+				(e) =>
+					(e.from.nodeId === newEdge.from.nodeId &&
+						e.from.port === newEdge.from.port &&
+						e.to.nodeId === newEdge.to.nodeId &&
+						e.to.port === newEdge.to.port) ||
+					(e.from.nodeId === newEdge.to.nodeId &&
+						e.from.port === newEdge.to.port &&
+						e.to.nodeId === newEdge.from.nodeId &&
+						e.to.port === newEdge.from.port),
+			);
+
+			if (!exists) {
+				edges = [...edges, newEdge];
+			}
 		}
+		connecting = null;
+	} else {
+		// Начинаем новое соединение
+		connecting = { nodeId, port };
 	}
+}
 
+function _cancelConnection() {
+	connecting = null;
+	mousePosition = null;
+}
 
-	// Реактивное вычисление путей для линий
-	// Зависит от nodes и edges, чтобы обновляться при перемещении блоков
-	// Также зависит от размеров окна для корректной работы при изменении viewport
-	let windowResizeTrigger = 0;
-	
-	if (typeof window !== 'undefined') {
-		const handleResize = () => {
-			windowResizeTrigger++;
+function generateNodeId(variant: NodeVariant): string {
+	const existingIds = nodes.map((n) => n.id);
+	let counter = 1;
+	let newId = `${variant}-node-${counter}`;
+	while (existingIds.includes(newId)) {
+		counter++;
+		newId = `${variant}-node-${counter}`;
+	}
+	return newId;
+}
+
+function _addChannelNode() {
+	const channelCount = nodes.filter((n) => n.variant === "channel").length;
+	const newChannel: CanvasNode = {
+		id: generateNodeId("channel"),
+		label: "Channel",
+		description: "Новый канал доставки",
+		variant: "channel",
+		position: { x: 200 + channelCount * 280, y: 200 + channelCount * 80 },
+	};
+	nodes = [...nodes, newChannel];
+}
+
+function _addTemplateNode() {
+	const templateCount = nodes.filter((n) => n.variant === "template").length;
+	const newTemplate: CanvasNode = {
+		id: generateNodeId("template"),
+		label: "Template",
+		description: "Новый шаблон",
+		variant: "template",
+		position: { x: 150 + templateCount * 300, y: 180 + templateCount * 100 },
+	};
+	nodes = [...nodes, newTemplate];
+}
+
+function _deleteNode(nodeId: string, event: MouseEvent) {
+	event.stopPropagation();
+
+	// Удалить узел
+	nodes = nodes.filter((n) => n.id !== nodeId);
+
+	// Удалить все связанные линии (edges)
+	edges = edges.filter(
+		(e) => e.from.nodeId !== nodeId && e.to.nodeId !== nodeId,
+	);
+
+	// Если удаляемый узел был в процессе соединения, отменить соединение
+	if (connecting?.nodeId === nodeId) {
+		connecting = null;
+	}
+}
+
+function _deleteEdge(edgeId: string, event?: MouseEvent | KeyboardEvent) {
+	event?.stopPropagation();
+	edges = edges.filter((e) => e.id !== edgeId);
+}
+
+function _getMidpoint(pathString: string): { x: number; y: number } | null {
+	// Парсим SVG path и находим точку на 50% длины
+	try {
+		const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+		path.setAttribute("d", pathString);
+		const length = path.getTotalLength();
+		const midpoint = path.getPointAtLength(length / 2);
+		return { x: midpoint.x, y: midpoint.y };
+	} catch {
+		return null;
+	}
+}
+
+const _hoveredEdgeId: string | null = null;
+
+function _handleWorkspaceMouseMove(event: MouseEvent) {
+	if (connecting && workspaceElement) {
+		const rect = workspaceElement.getBoundingClientRect();
+		mousePosition = {
+			x: event.clientX - rect.left,
+			y: event.clientY - rect.top,
 		};
-		window.addEventListener('resize', handleResize);
-		// Cleanup будет выполнен при unmount компонента
 	}
+}
 
-	$: edgePaths = (() => {
-		// Явно используем nodes, edges и windowResizeTrigger для реактивности
-		const _ = nodes.length + edges.length + windowResizeTrigger;
-		return edges.map((edge) => {
+// Реактивное вычисление путей для линий
+// Зависит от nodes и edges, чтобы обновляться при перемещении блоков
+// Также зависит от размеров окна для корректной работы при изменении viewport
+let windowResizeTrigger = 0;
+
+if (typeof window !== "undefined") {
+	const handleResize = () => {
+		windowResizeTrigger++;
+	};
+	window.addEventListener("resize", handleResize);
+	// Cleanup будет выполнен при unmount компонента
+}
+
+$: edgePaths = (() => {
+	// Явно используем nodes, edges и windowResizeTrigger для реактивности
+	const _ = nodes.length + edges.length + windowResizeTrigger;
+	return edges
+		.map((edge) => {
 			const fromPos = getConnectorPosition(edge.from.nodeId, edge.from.port);
 			const toPos = getConnectorPosition(edge.to.nodeId, edge.to.port);
 			if (!fromPos || !toPos) return null;
@@ -267,26 +280,27 @@
 				id: edge.id,
 				path: `M ${fromPos.x} ${fromPos.y} C ${controlX1} ${fromPos.y}, ${controlX2} ${toPos.y}, ${toPos.x} ${toPos.y}`,
 			};
-		}).filter((p): p is { id: string; path: string } => p !== null);
-	})();
+		})
+		.filter((p): p is { id: string; path: string } => p !== null);
+})();
 
-	// Путь для активного соединения (следует за курсором)
-	// Зависит от nodes, connecting и mousePosition
-	$: tempPath = (() => {
-		if (!connecting) return null;
+// Путь для активного соединения (следует за курсором)
+// Зависит от nodes, connecting и mousePosition
+$: tempPath = (() => {
+	if (!connecting) return null;
 
-		const fromPos = getConnectorPosition(connecting.nodeId, connecting.port);
-		if (!fromPos) return null;
+	const fromPos = getConnectorPosition(connecting.nodeId, connecting.port);
+	if (!fromPos) return null;
 
-		const targetX = mousePosition?.x ?? fromPos.x + 200;
-		const targetY = mousePosition?.y ?? fromPos.y;
+	const targetX = mousePosition?.x ?? fromPos.x + 200;
+	const targetY = mousePosition?.y ?? fromPos.y;
 
-		const dx = targetX - fromPos.x;
-		const controlX1 = fromPos.x + Math.abs(dx) * 0.5;
-		const controlX2 = targetX - Math.abs(dx) * 0.5;
+	const dx = targetX - fromPos.x;
+	const controlX1 = fromPos.x + Math.abs(dx) * 0.5;
+	const controlX2 = targetX - Math.abs(dx) * 0.5;
 
-		return `M ${fromPos.x} ${fromPos.y} C ${controlX1} ${fromPos.y}, ${controlX2} ${targetY}, ${targetX} ${targetY}`;
-	})();
+	return `M ${fromPos.x} ${fromPos.y} C ${controlX1} ${fromPos.y}, ${controlX2} ${targetY}, ${targetX} ${targetY}`;
+})();
 </script>
 
 <svelte:window on:keydown={(e) => e.key === 'Escape' && connecting && cancelConnection()} />

@@ -1,4 +1,4 @@
-export type QueueStatus = 'pending' | 'processing' | 'failed' | 'completed';
+export type QueueStatus = "pending" | "processing" | "failed" | "completed";
 
 export type QueueItem = {
 	taskId: string;

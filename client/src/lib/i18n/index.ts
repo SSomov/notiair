@@ -1,19 +1,21 @@
-import i18n from 'sveltekit-i18n';
-import type { Config } from 'sveltekit-i18n';
+import type { Config } from "sveltekit-i18n";
+import i18n from "sveltekit-i18n";
 
 const config: Config = {
 	loaders: [
 		{
-			locale: 'en',
-			key: '',
-			loader: async () => (await import('./locales/en.json')).default,
+			locale: "en",
+			key: "",
+			loader: async () => (await import("./locales/en.json")).default,
 		},
 		{
-			locale: 'ru',
-			key: '',
-			loader: async () => (await import('./locales/ru.json')).default,
+			locale: "ru",
+			key: "",
+			loader: async () => (await import("./locales/ru.json")).default,
 		},
 	],
 };
 
-export const { t, locale, locales, loading, loadTranslations } = new i18n(config);
+export const { t, locale, locales, loading, loadTranslations } = new i18n(
+	config,
+);
