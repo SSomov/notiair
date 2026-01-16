@@ -1,45 +1,45 @@
 <script lang="ts">
-  type Note = {
+  type TelegramToken = {
     id: string;
     secret: string;
     comment: string;
   };
 
-  let notes: Note[] = [];
+  let tokens: TelegramToken[] = [];
 
-  let modalOpen = false;
-  let editingNote: Note | null = null;
+  let tokenModalOpen = false;
+  let editingToken: TelegramToken | null = null;
   let secretInput = '';
   let commentInput = '';
 
-  function openModal(note?: Note) {
-    editingNote = note || null;
-    secretInput = note?.secret || '';
-    commentInput = note?.comment || '';
-    modalOpen = true;
+  function openTokenModal(token?: TelegramToken) {
+    editingToken = token || null;
+    secretInput = token?.secret || '';
+    commentInput = token?.comment || '';
+    tokenModalOpen = true;
   }
 
-  function closeModal() {
-    modalOpen = false;
-    editingNote = null;
+  function closeTokenModal() {
+    tokenModalOpen = false;
+    editingToken = null;
     secretInput = '';
     commentInput = '';
   }
 
-  function saveConnector() {
+  function saveToken() {
     if (!secretInput.trim()) return;
 
-    if (editingNote) {
-      notes = notes.map((note) =>
-        note.id === editingNote.id
-          ? { ...note, secret: secretInput.trim(), comment: commentInput.trim() }
-          : note
+    if (editingToken) {
+      tokens = tokens.map((token) =>
+        token.id === editingToken.id
+          ? { ...token, secret: secretInput.trim(), comment: commentInput.trim() }
+          : token
       );
     } else {
-      const nextIndex = notes.length + 1;
+      const nextIndex = tokens.length + 1;
       const id = `#TG-${String(nextIndex).padStart(3, '0')}`;
-      notes = [
-        ...notes,
+      tokens = [
+        ...tokens,
         {
           id,
           secret: secretInput.trim(),
@@ -48,11 +48,11 @@
       ];
     }
 
-    closeModal();
+    closeTokenModal();
   }
 
-  function deleteNote(id: string) {
-    notes = notes.filter((note) => note.id !== id);
+  function deleteToken(id: string) {
+    tokens = tokens.filter((token) => token.id !== id);
   }
 </script>
 
@@ -67,7 +67,7 @@
       <span class="pill">telegram connectors</span>
     </div>
     <p class="text-sm text-muted max-w-2xl">
-      Управляйте токенами ботов и каналов Telegram для маршрутизации уведомлений.
+      Управляйте токенами ботов Telegram для маршрутизации уведомлений.
     </p>
   </header>
 
@@ -77,35 +77,37 @@
       <button
         type="button"
         class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm"
-        on:click={() => openModal()}
+        on:click={() => openTokenModal()}
       >
         Добавить токен
       </button>
     </div>
 
-    {#if notes.length === 0}
+    {#if tokens.length === 0}
       <div class="glass-card p-8 text-center">
         <p class="text-sm text-muted">Нет добавленных токенов</p>
       </div>
     {:else}
       <div class="grid gap-4 md:grid-cols-2">
-        {#each notes as note}
+        {#each tokens as token}
           <div class="glass-card p-4 space-y-3">
             <div class="flex items-start justify-between gap-3">
-              <div class="flex-1">
-                <p class="font-semibold text-text">{note.id}</p>
-                {#if note.comment}
-                  <p class="mt-1 text-sm text-muted">{note.comment}</p>
+              <div class="flex-1 space-y-2">
+                <div class="flex items-center gap-3">
+                  <p class="font-semibold text-text">{token.id}</p>
+                  <span class="text-xs text-muted font-mono truncate max-w-md">{token.secret}</span>
+                </div>
+                {#if token.comment}
+                  <p class="text-sm text-muted">{token.comment}</p>
                 {/if}
-                <p class="mt-2 text-xs text-muted font-mono truncate">{note.secret}</p>
               </div>
               <div class="flex items-center gap-2">
                 <button
                   type="button"
                   class="icon-btn"
-                  title="Редактировать"
-                  aria-label="Редактировать"
-                  on:click={() => openModal(note)}
+                  title="Редактировать токен"
+                  aria-label="Редактировать токен"
+                  on:click={() => openTokenModal(token)}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
                     <path d="M16.862 3.487 20.51 7.136a1.5 1.5 0 0 1 0 2.121l-9.193 9.193-4.593.511a1 1 0 0 1-1.1-1.1l.511-4.593 9.193-9.193a1.5 1.5 0 0 1 2.121 0Z" />
@@ -115,9 +117,9 @@
                 <button
                   type="button"
                   class="icon-btn"
-                  title="Удалить"
-                  aria-label="Удалить"
-                  on:click={() => deleteNote(note.id)}
+                  title="Удалить токен"
+                  aria-label="Удалить токен"
+                  on:click={() => deleteToken(token.id)}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
                     <path d="M6 7h12" />
@@ -135,15 +137,15 @@
     {/if}
   </div>
 
-  {#if modalOpen}
-    <div class="modal-backdrop" role="presentation" on:click={closeModal}></div>
+  {#if tokenModalOpen}
+    <div class="modal-backdrop" role="presentation" on:click={closeTokenModal}></div>
     <div class="modal-wrap" role="dialog" aria-modal="true">
       <div class="modal">
         <div class="modal-header">
           <h3 class="text-lg font-semibold text-text">
-            {editingNote ? 'Редактировать токен' : 'Добавить токен Telegram'}
+            {editingToken ? 'Редактировать токен' : 'Добавить токен Telegram'}
           </h3>
-          <button type="button" class="modal-close" on:click={closeModal} aria-label="Закрыть">
+          <button type="button" class="modal-close" on:click={closeTokenModal} aria-label="Закрыть">
             ✕
           </button>
         </div>
@@ -169,19 +171,20 @@
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn-secondary" on:click={closeModal}>Отменить</button>
+          <button type="button" class="btn-secondary" on:click={closeTokenModal}>Отменить</button>
           <button
             type="button"
             class="btn-primary"
-            on:click={saveConnector}
+            on:click={saveToken}
             disabled={!secretInput.trim()}
           >
-            {editingNote ? 'Сохранить' : 'Добавить'}
+            {editingToken ? 'Сохранить' : 'Добавить'}
           </button>
         </div>
       </div>
     </div>
   {/if}
+
 </section>
 
 <style>
