@@ -152,9 +152,7 @@
 						</svg>
 					</button>
 					<div class="connectors">
-						<span class="connector top"></span>
 						<span class="connector right"></span>
-						<span class="connector bottom"></span>
 						<span class="connector left"></span>
 					</div>
 					<span class="node-label">{node.label}</span>
@@ -288,22 +286,10 @@
 		box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
 	}
 
-	.connector.top {
-		top: -6px;
-		left: 50%;
-		transform: translateX(-50%);
-	}
-
 	.connector.right {
 		top: 50%;
 		right: -6px;
 		transform: translateY(-50%);
-	}
-
-	.connector.bottom {
-		bottom: -6px;
-		left: 50%;
-		transform: translateX(-50%);
 	}
 
 	.connector.left {
