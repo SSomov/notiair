@@ -1,10 +1,11 @@
 <script lang="ts">
+import { draggable } from "@neodrag/svelte";
 import type { DragEventData } from "@neodrag/svelte";
 import { tick } from "svelte";
 
-const _triggerOptions = ["API", "HTTP Webhook", "Cron", "Manual"];
-let _triggerMenuOpen = false;
-let _selectedTrigger = "Добавить триггер";
+const triggerOptions = ["API", "HTTP Webhook", "Cron", "Manual"];
+let triggerMenuOpen = false;
+let selectedTrigger = "Добавить триггер";
 
 type NodeVariant = "trigger" | "template" | "channel";
 type PortType = "left" | "right";
@@ -57,9 +58,9 @@ let connecting: ConnectingState = null;
 let mousePosition: { x: number; y: number } | null = null;
 let workspaceElement: HTMLDivElement;
 
-function _selectTrigger(option: string) {
-	_selectedTrigger = option;
-	_triggerMenuOpen = false;
+function selectTrigger(option: string) {
+	selectedTrigger = option;
+	triggerMenuOpen = false;
 	nodes = nodes.map((node) =>
 		node.variant === "trigger"
 			? {
@@ -71,7 +72,7 @@ function _selectTrigger(option: string) {
 	);
 }
 
-async function _handleDrag({ detail }: CustomEvent<DragEventData>, id: string) {
+async function handleDrag({ detail }: CustomEvent<DragEventData>, id: string) {
 	nodes = nodes.map((node) =>
 		node.id === id
 			? {
@@ -121,7 +122,7 @@ function getConnectorPosition(
 	return { x: connectorCenterX, y: connectorCenterY };
 }
 
-function _handleConnectorClick(
+function handleConnectorClick(
 	nodeId: string,
 	port: PortType,
 	event: MouseEvent,
@@ -163,7 +164,7 @@ function _handleConnectorClick(
 	}
 }
 
-function _cancelConnection() {
+function cancelConnection() {
 	connecting = null;
 	mousePosition = null;
 }
@@ -179,7 +180,7 @@ function generateNodeId(variant: NodeVariant): string {
 	return newId;
 }
 
-function _addChannelNode() {
+function addChannelNode() {
 	const channelCount = nodes.filter((n) => n.variant === "channel").length;
 	const newChannel: CanvasNode = {
 		id: generateNodeId("channel"),
@@ -191,7 +192,7 @@ function _addChannelNode() {
 	nodes = [...nodes, newChannel];
 }
 
-function _addTemplateNode() {
+function addTemplateNode() {
 	const templateCount = nodes.filter((n) => n.variant === "template").length;
 	const newTemplate: CanvasNode = {
 		id: generateNodeId("template"),
@@ -203,7 +204,7 @@ function _addTemplateNode() {
 	nodes = [...nodes, newTemplate];
 }
 
-function _deleteNode(nodeId: string, event: MouseEvent) {
+function deleteNode(nodeId: string, event: MouseEvent) {
 	event.stopPropagation();
 
 	// Удалить узел
@@ -220,12 +221,12 @@ function _deleteNode(nodeId: string, event: MouseEvent) {
 	}
 }
 
-function _deleteEdge(edgeId: string, event?: MouseEvent | KeyboardEvent) {
+function deleteEdge(edgeId: string, event?: MouseEvent | KeyboardEvent) {
 	event?.stopPropagation();
 	edges = edges.filter((e) => e.id !== edgeId);
 }
 
-function _getMidpoint(pathString: string): { x: number; y: number } | null {
+function getMidpoint(pathString: string): { x: number; y: number } | null {
 	// Парсим SVG path и находим точку на 50% длины
 	try {
 		const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
@@ -238,9 +239,9 @@ function _getMidpoint(pathString: string): { x: number; y: number } | null {
 	}
 }
 
-const _hoveredEdgeId: string | null = null;
+let hoveredEdgeId: string | null = null;
 
-function _handleWorkspaceMouseMove(event: MouseEvent) {
+function handleWorkspaceMouseMove(event: MouseEvent) {
 	if (connecting && workspaceElement) {
 		const rect = workspaceElement.getBoundingClientRect();
 		mousePosition = {

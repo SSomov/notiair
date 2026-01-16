@@ -102,25 +102,25 @@ let activeGroup: ChannelGroup | null = null;
 let activeEntry: ConnectorEntry | null = null;
 let channelInput = "";
 let channelDescription = "";
-let _channelModalOpen = false;
+let channelModalOpen = false;
 
-function _openChannelModal(group: ChannelGroup, entry: ConnectorEntry) {
+function openChannelModal(group: ChannelGroup, entry: ConnectorEntry) {
 	activeGroup = group;
 	activeEntry = entry;
 	channelInput = "";
 	channelDescription = "";
-	_channelModalOpen = true;
+	channelModalOpen = true;
 }
 
 function closeModal() {
-	_channelModalOpen = false;
+	channelModalOpen = false;
 	activeGroup = null;
 	activeEntry = null;
 	channelInput = "";
 	channelDescription = "";
 }
 
-function _saveChannel() {
+function saveChannel() {
 	if (!activeGroup || !activeEntry || !channelInput.trim()) return;
 	const value = channelInput.trim();
 	const description = channelDescription.trim();
@@ -145,7 +145,7 @@ function _saveChannel() {
 	closeModal();
 }
 
-function _removeChannel(
+function removeChannel(
 	groupSlug: ChannelGroup["slug"],
 	connectorId: string,
 	channelName: string,
@@ -168,7 +168,7 @@ function _removeChannel(
 	});
 }
 
-function _toggleMute(
+function toggleMute(
 	groupSlug: ChannelGroup["slug"],
 	connectorId: string,
 	channelName: string,
