@@ -15,8 +15,12 @@ export type WorkflowEdge = {
 export type WorkflowDraft = {
 	id: string;
 	name: string;
+	description?: string;
 	nodes: WorkflowNode[];
 	edges: WorkflowEdge[];
 	filters: Record<string, string>;
-	activeNode: WorkflowNode | null;
+	isActive?: boolean;
+	createdAt?: string;
+	updatedAt?: string;
+	activeNode?: WorkflowNode | null;
 };

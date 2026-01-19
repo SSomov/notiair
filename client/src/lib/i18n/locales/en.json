@@ -48,6 +48,7 @@
 			"subtitle": "For testing and A/B",
 			"allDrafts": "All drafts",
 			"copy": "Copy draft",
+			"delete": "Delete draft",
 			"updated": "Updated",
 			"openDraft": "Open draft",
 			"createDraft": "Create draft",

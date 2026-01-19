@@ -20,6 +20,7 @@ import (
 	"notiair/internal/persistence/database"
 	"notiair/internal/persistence/outbox"
 	"notiair/internal/persistence/serviceconfig"
+	workflowpersistence "notiair/internal/persistence/workflow"
 	"notiair/internal/queue"
 	"notiair/internal/routing"
 	"notiair/internal/templates"
@@ -52,7 +53,7 @@ func initDatabase() {
 
 	serviceConfigRepo = serviceconfig.NewRepository(dbConn)
 
-	if err := dbConn.AutoMigrate(&outbox.Message{}, &serviceconfig.ServiceConfig{}, &channel.Channel{}); err != nil {
+	if err := dbConn.AutoMigrate(&outbox.Message{}, &serviceconfig.ServiceConfig{}, &channel.Channel{}, &workflowpersistence.WorkflowEntity{}); err != nil {
 		log.Fatalf("migrate db: %v", err)
 	}
 
@@ -79,7 +80,8 @@ func seedServiceConfigs(ctx context.Context) error {
 
 func buildApplication() *fiber.App {
 	templateRepo := templates.NewMemoryRepository()
-	workflowRepo := workflow.NewMemoryRepository()
+	workflowPersistenceRepo := workflowpersistence.NewRepository(dbConn)
+	workflowRepo := workflow.NewDBRepository(workflowPersistenceRepo)
 	routerSvc := routing.NewService(workflowRepo)
 	outboxRepo := outbox.NewRepository(dbConn)
 

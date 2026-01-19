@@ -24,7 +24,9 @@ type TemplateRepository interface {
 
 type WorkflowRepository interface {
 	Save(ctx context.Context, wf workflow.Workflow) (workflow.Workflow, error)
+	FindByID(ctx context.Context, id string) (workflow.Workflow, error)
 	List(ctx context.Context) ([]workflow.Workflow, error)
+	Delete(ctx context.Context, id string) error
 }
 
 type QueueInspector interface {
@@ -141,6 +143,7 @@ type workflowRequest struct {
 	Nodes       []workflow.Node   `json:"nodes"`
 	Edges       []workflow.Edge   `json:"edges"`
 	Filters     map[string]string `json:"filters"`
+	IsActive    bool              `json:"isActive"`
 }
 
 func (a *API) SaveWorkflow(c *fiber.Ctx) error {
@@ -156,6 +159,7 @@ func (a *API) SaveWorkflow(c *fiber.Ctx) error {
 		Nodes:       req.Nodes,
 		Edges:       req.Edges,
 		Filters:     req.Filters,
+		IsActive:    req.IsActive,
 	}
 
 	saved, err := a.workflows.Save(c.Context(), wf)
@@ -172,7 +176,38 @@ func (a *API) ListWorkflows(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
 
+	if wfs == nil {
+		wfs = []workflow.Workflow{}
+	}
+
 	return c.JSON(wfs)
+}
+
+func (a *API) GetWorkflow(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "id is required")
+	}
+
+	wf, err := a.workflows.FindByID(c.Context(), id)
+	if err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "workflow not found")
+	}
+
+	return c.JSON(wf)
+}
+
+func (a *API) DeleteWorkflow(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "id is required")
+	}
+
+	if err := a.workflows.Delete(c.Context(), id); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+
+	return c.SendStatus(fiber.StatusNoContent)
 }
 
 func (a *API) ListQueue(c *fiber.Ctx) error {

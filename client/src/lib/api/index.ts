@@ -25,6 +25,13 @@ export async function saveTemplate(
 export async function listWorkflows(): Promise<WorkflowDraft[]> {
 	const res = await fetch(`${API_URL}/workflows`);
 	if (!res.ok) throw new Error("Не удалось загрузить workflow");
+	const data = await res.json();
+	return Array.isArray(data) ? data : [];
+}
+
+export async function getWorkflow(id: string): Promise<WorkflowDraft> {
+	const res = await fetch(`${API_URL}/workflows/${id}`);
+	if (!res.ok) throw new Error("Не удалось загрузить workflow");
 	return res.json();
 }
 
@@ -38,6 +45,13 @@ export async function saveWorkflow(
 	});
 	if (!res.ok) throw new Error("Не удалось сохранить workflow");
 	return res.json();
+}
+
+export async function deleteWorkflow(id: string): Promise<void> {
+	const res = await fetch(`${API_URL}/workflows/${id}`, {
+		method: "DELETE",
+	});
+	if (!res.ok) throw new Error("Не удалось удалить workflow");
 }
 
 export async function dispatchNotification(input: {

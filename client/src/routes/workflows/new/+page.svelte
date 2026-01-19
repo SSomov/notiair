@@ -1,11 +1,22 @@
 <script lang="ts">
-import { draggable } from "@neodrag/svelte";
-import type { DragEventData } from "@neodrag/svelte";
-import { tick } from "svelte";
+	import { draggable } from "@neodrag/svelte";
+	import type { DragEventData } from "@neodrag/svelte";
+	import { onMount } from "svelte";
+	import { page } from "$app/stores";
+	import { saveWorkflow, getWorkflow } from "$lib/api";
+	import type { WorkflowDraft } from "$lib/types/workflow";
 
-const triggerOptions = ["API", "HTTP Webhook", "Cron", "Manual"];
-let triggerMenuOpen = false;
-let selectedTrigger = "Добавить триггер";
+	const triggerOptions = ["API", "HTTP Webhook", "Cron", "Manual"];
+	let triggerMenuOpen = false;
+	let selectedTrigger = "Добавить триггер";
+
+	let workflowId: string | null = null;
+	let workflowName = "Новый workflow";
+	let editingName = false;
+	let isActive = false; // По умолчанию черновик
+	let saving = false;
+	let loading = false;
+	let error: string | null = null;
 
 type NodeVariant = "trigger" | "template" | "channel";
 type PortType = "left" | "right";
@@ -29,31 +40,8 @@ type ConnectingState = {
 	port: PortType;
 } | null;
 
-let nodes: CanvasNode[] = [
-	{
-		id: "trigger-node",
-		label: "Trigger",
-		description: "Выберите событие запуска",
-		variant: "trigger",
-		position: { x: 80, y: 140 },
-	},
-	{
-		id: "template-node",
-		label: "Template",
-		description: "Отправка уведомления",
-		variant: "template",
-		position: { x: 360, y: 320 },
-	},
-	{
-		id: "channel-node",
-		label: "Channel",
-		description: "Telegram · @product-updates",
-		variant: "channel",
-		position: { x: 640, y: 160 },
-	},
-];
-
-let edges: Edge[] = [];
+	let nodes: CanvasNode[] = [];
+	let edges: Edge[] = [];
 let connecting: ConnectingState = null;
 let mousePosition: { x: number; y: number } | null = null;
 let workspaceElement: HTMLDivElement;
@@ -302,17 +290,152 @@ $: tempPath = (() => {
 
 	return `M ${fromPos.x} ${fromPos.y} C ${controlX1} ${fromPos.y}, ${controlX2} ${targetY}, ${targetX} ${targetY}`;
 })();
+
+	function toggleEditName() {
+		editingName = !editingName;
+	}
+
+	function saveName() {
+		if (!workflowName.trim()) {
+			workflowName = "Новый workflow";
+		}
+		editingName = false;
+	}
+
+	onMount(async () => {
+		const id = $page.url.searchParams.get("id");
+		if (id) {
+			workflowId = id;
+			try {
+				loading = true;
+				error = null;
+				const workflow = await getWorkflow(id);
+				
+				workflowName = workflow.name || "Новый workflow";
+				isActive = workflow.isActive || false;
+				
+				// Преобразуем nodes из API формата в CanvasNode
+				nodes = (workflow.nodes || []).map((node) => ({
+					id: node.id,
+					label: (node.config as any)?.label || node.id,
+					description: (node.config as any)?.description || "",
+					variant: ((node.config as any)?.variant || node.type) as NodeVariant,
+					position: node.position || { x: 0, y: 0 },
+				}));
+				
+				// Преобразуем edges из API формата в Edge
+				edges = (workflow.edges || []).map((edge, index) => ({
+					id: `edge-${index}`,
+					from: { nodeId: edge.from, port: "right" as PortType },
+					to: { nodeId: edge.to, port: "left" as PortType },
+				}));
+			} catch (e) {
+				error = e instanceof Error ? e.message : "Не удалось загрузить workflow";
+			} finally {
+				loading = false;
+			}
+		}
+	});
+
+	async function saveWorkflowToAPI() {
+		if (saving) return;
+
+		try {
+			saving = true;
+			error = null;
+
+			const workflowData = {
+				id: workflowId || crypto.randomUUID(),
+				name: workflowName.trim() || "Новый workflow",
+				description: "",
+				nodes: nodes.map((node) => ({
+					id: node.id,
+					type: node.variant === "trigger" ? "trigger" : "action",
+					position: {
+						x: node.position.x,
+						y: node.position.y,
+					},
+					config: {
+						label: node.label,
+						description: node.description,
+						variant: node.variant,
+					},
+				})),
+				edges: edges.map((edge) => ({
+					from: edge.from.nodeId,
+					to: edge.to.nodeId,
+				})),
+				filters: {},
+				isActive: isActive,
+			};
+
+			await saveWorkflow(workflowData);
+			// Обновляем workflowId после сохранения
+			if (!workflowId) {
+				const saved = await getWorkflow(workflowData.id);
+				workflowId = saved.id;
+			}
+		} catch (e) {
+			error = e instanceof Error ? e.message : "Не удалось сохранить workflow";
+		} finally {
+			saving = false;
+		}
+	}
 </script>
 
 <svelte:window on:keydown={(e) => e.key === 'Escape' && connecting && cancelConnection()} />
 
 <section class="space-y-8 px-4 pb-12 pt-2 md:px-12 md:pt-4">
 	<header class="space-y-2">
-		<span class="pill">новый workflow</span>
+		<div class="flex items-center gap-3">
+			<span class="pill">{workflowId ? "редактирование workflow" : "новый workflow"}</span>
+			<div class="flex items-center gap-2">
+				{#if editingName}
+					<input
+						type="text"
+						class="rounded-lg border border-border bg-surface px-3 py-1.5 text-lg font-semibold text-text focus:border-accent focus:outline-none"
+						bind:value={workflowName}
+						on:blur={saveName}
+						on:keydown={(e) => e.key === 'Enter' && saveName()}
+						autofocus
+					/>
+				{:else}
+					<h1 class="text-lg font-semibold text-text">{workflowName}</h1>
+					<button
+						type="button"
+						class="icon-btn"
+						title="Редактировать название"
+						aria-label="Редактировать название"
+						on:click={toggleEditName}
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
+							<path d="M16.862 3.487 20.51 7.136a1.5 1.5 0 0 1 0 2.121l-9.193 9.193-4.593.511a1 1 0 0 1-1.1-1.1l.511-4.593 9.193-9.193a1.5 1.5 0 0 1 2.121 0Z" />
+							<path d="M19 11.5 12.5 5" />
+						</svg>
+					</button>
+				{/if}
+			</div>
+			<div class="flex items-center gap-2 ml-auto">
+				<label class="relative inline-flex items-center cursor-pointer">
+					<input
+						type="checkbox"
+						bind:checked={isActive}
+						class="sr-only peer"
+					/>
+					<div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-accent rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
+					<span class="ml-2 text-sm text-muted">{isActive ? "Активен" : "Черновик"}</span>
+				</label>
+			</div>
+		</div>
 		<p class="max-w-2xl text-sm text-muted">
 			Добавьте триггеры, действия и каналы доставки. Каждую ноду можно связать линиями и
 			протестировать перед публикацией.
 		</p>
+		{#if error}
+			<div class="rounded-lg border border-red-200 bg-red-50 p-3">
+				<p class="text-sm text-red-600">{error}</p>
+			</div>
+		{/if}
 	</header>
 
 	<div class="workspace">
@@ -362,6 +485,14 @@ $: tempPath = (() => {
 					Добавить канал
 				</button>
 				<button type="button" class="btn-primary">Запустить тест</button>
+				<button
+					type="button"
+					class="btn-primary bg-accent text-white shadow-sm hover:shadow-md"
+					on:click={saveWorkflowToAPI}
+					disabled={saving}
+				>
+					{saving ? 'Сохранение...' : 'Сохранить'}
+				</button>
 			</div>
 		</div>
 
@@ -713,5 +844,24 @@ $: tempPath = (() => {
 
 	.connector.left:hover {
 		transform: translateY(-50%) scale(1.2);
+	}
+
+	.icon-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		border-radius: 999px;
+		border: 1px solid rgba(148, 163, 184, 0.3);
+		background: #fff;
+		color: #64748b;
+		transition: 120ms ease;
+	}
+
+	.icon-btn:hover {
+		color: #2563eb;
+		border-color: rgba(37, 99, 235, 0.5);
+		transform: translateY(-1px);
 	}
 </style>
