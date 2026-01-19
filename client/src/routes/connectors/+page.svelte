@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { listTelegramTokens, type TelegramToken } from "$lib/api";
+	import TelegramIcon from "$lib/components/TelegramIcon.svelte";
 
 	type Connector = {
 		slug: "telegram" | "slack" | "smtp";
@@ -138,7 +139,10 @@ function deleteNote(slug: Connector["slug"], id: string) {
       {#if connector.slug === 'telegram'}
         <a href="/connectors/telegram" class="glass-card h-full space-y-4 block transition hover:shadow-lg cursor-pointer">
           <div class="flex items-center justify-between">
-            <h2 class={`text-xl font-semibold ${connector.color}`}>{connector.name}</h2>
+            <div class="flex items-center gap-2">
+              <TelegramIcon size={24} />
+              <h2 class={`text-xl font-semibold ${connector.color}`}>{connector.name}</h2>
+            </div>
             <span class="pill capitalize">{connector.badge}</span>
           </div>
           <p class="text-sm text-muted">{connector.description}</p>

@@ -3,10 +3,11 @@
 	import type { DragEventData } from "@neodrag/svelte";
 	import { onMount, tick } from "svelte";
 	import { page } from "$app/stores";
-	import { saveWorkflow, getWorkflow } from "$lib/api";
+	import { saveWorkflow, getWorkflow, listTelegramTokens, listChannels, type Channel, type TelegramToken } from "$lib/api";
 	import type { WorkflowDraft } from "$lib/types/workflow";
+	import TelegramIcon from "$lib/components/TelegramIcon.svelte";
 
-	const triggerOptions = ["API", "HTTP Webhook", "Cron", "Manual"];
+	const triggerOptions = ["API", "Cron", "Manual"];
 	let triggerMenuOpen = false;
 	let selectedTrigger = "Добавить триггер";
 
@@ -27,6 +28,11 @@ type CanvasNode = {
 	description: string;
 	variant: NodeVariant;
 	position: { x: number; y: number };
+	selectedChannelId?: string;
+	selectedChannelName?: string;
+	selectedChannelConnectorId?: string;
+	templateBody?: string;
+	templatePayload?: Record<string, any>;
 };
 
 type Edge = {
@@ -46,18 +52,51 @@ let connecting: ConnectingState = null;
 let mousePosition: { x: number; y: number } | null = null;
 let workspaceElement: HTMLDivElement;
 
+// Состояние для выбора канала
+let channelSelectModalOpen = false;
+let editingChannelNodeId: string | null = null;
+let availableChannels: ChannelWithConnector[] = [];
+let loadingChannels = false;
+
+// Состояние для редактирования template
+let templateEditModalOpen = false;
+let editingTemplateNodeId: string | null = null;
+let templateBody = "";
+let templatePayloadJson = "{}";
+let templatePayload: Record<string, any> = {};
+
+// Базовый payload с предзаполненными переменными (только для фронта)
+const defaultPayload = {
+	userName: "Иван",
+	userEmail: "ivan@example.com",
+	message: "Привет! Это тестовое сообщение",
+	timestamp: "2024-01-19 15:30:00",
+	workflowName: "Новый workflow",
+	status: "активен",
+	count: 42
+};
+
+function getConnectorType(connectorId: string | undefined): "telegram" | "slack" | "smtp" | null {
+	if (!connectorId) return null;
+	// Пока все каналы из Telegram токенов
+	// В будущем можно определить по типу коннектора
+	return "telegram";
+}
+
 function selectTrigger(option: string) {
 	selectedTrigger = option;
 	triggerMenuOpen = false;
-	nodes = nodes.map((node) =>
-		node.variant === "trigger"
-			? {
-					...node,
-					description:
-						option === "Добавить триггер" ? "Выберите событие запуска" : option,
-				}
-			: node,
-	);
+	
+	// Создаем новую ноду триггера с выбранным типом
+	const triggerCount = nodes.filter((n) => n.variant === "trigger").length;
+	const newTrigger: CanvasNode = {
+		id: generateNodeId("trigger"),
+		label: option,
+		description: option,
+		variant: "trigger",
+		position: { x: 100 + triggerCount * 300, y: 100 + triggerCount * 100 },
+	};
+	nodes = [...nodes, newTrigger];
 }
 
 async function handleDrag({ detail }: CustomEvent<DragEventData>, id: string) {
@@ -178,6 +217,154 @@ function addChannelNode() {
 		position: { x: 200 + channelCount * 280, y: 200 + channelCount * 80 },
 	};
 	nodes = [...nodes, newChannel];
+}
+
+type ChannelWithConnector = Channel & {
+	connectorId: string;
+	connectorType: "telegram" | "slack" | "smtp";
+};
+
+async function openChannelSelect(nodeId: string) {
+	console.log("openChannelSelect called with nodeId:", nodeId);
+	editingChannelNodeId = nodeId;
+	channelSelectModalOpen = true;
+	loadingChannels = true;
+	
+	try {
+		// Загружаем активные токены Telegram
+		const tokens = await listTelegramTokens();
+		const activeTokens = tokens.filter(t => t.isActive);
+		
+		// Загружаем все каналы из всех активных токенов с информацией о коннекторе
+		const allChannels: ChannelWithConnector[] = [];
+		for (const token of activeTokens) {
+			try {
+				const channels = await listChannels(token.id);
+				allChannels.push(...channels.map(ch => ({
+					...ch,
+					connectorId: token.id,
+					connectorType: "telegram" as const,
+				})));
+			} catch (e) {
+				console.error(`Failed to load channels for ${token.id}:`, e);
+			}
+		}
+		
+		availableChannels = allChannels;
+		console.log("Available channels loaded:", availableChannels.length);
+	} catch (e) {
+		console.error("Error loading channels:", e);
+		error = e instanceof Error ? e.message : "Не удалось загрузить каналы";
+		availableChannels = [];
+	} finally {
+		loadingChannels = false;
+	}
+}
+
+function selectChannel(channel: ChannelWithConnector) {
+	if (!editingChannelNodeId) return;
+	
+	nodes = nodes.map((node) => {
+		if (node.id === editingChannelNodeId) {
+			return {
+				...node,
+				selectedChannelId: channel.id,
+				selectedChannelName: channel.displayName || channel.name,
+				selectedChannelConnectorId: channel.connectorId,
+				description: channel.description || channel.displayName || channel.name,
+			};
+		}
+		return node;
+	});
+	
+	channelSelectModalOpen = false;
+	editingChannelNodeId = null;
+}
+
+function closeChannelSelect() {
+	channelSelectModalOpen = false;
+	editingChannelNodeId = null;
+	availableChannels = [];
+}
+
+function openTemplateEdit(nodeId: string) {
+	editingTemplateNodeId = nodeId;
+	const node = nodes.find(n => n.id === nodeId);
+	if (node && node.templatePayload && Object.keys(node.templatePayload).length > 0) {
+		// Используем сохраненный payload из ноды
+		templateBody = node.templateBody || "";
+		templatePayload = node.templatePayload;
+		templatePayloadJson = JSON.stringify(templatePayload, null, 2);
+	} else {
+		// Используем базовый payload по умолчанию
+		templateBody = node?.templateBody || "";
+		templatePayload = { ...defaultPayload };
+		templatePayloadJson = JSON.stringify(defaultPayload, null, 2);
+	}
+	templateEditModalOpen = true;
+}
+
+function closeTemplateEdit() {
+	templateEditModalOpen = false;
+	editingTemplateNodeId = null;
+	templateBody = "";
+	templatePayloadJson = "{}";
+	templatePayload = {};
+}
+
+function saveTemplate() {
+	if (!editingTemplateNodeId) return;
+	
+	try {
+		// Парсим JSON payload
+		const payload = JSON.parse(templatePayloadJson);
+		
+		nodes = nodes.map((node) => {
+			if (node.id === editingTemplateNodeId) {
+				return {
+					...node,
+					templateBody: templateBody,
+					templatePayload: payload,
+					description: templateBody ? `Шаблон: ${templateBody.substring(0, 30)}${templateBody.length > 30 ? '...' : ''}` : "Новый шаблон",
+				};
+			}
+			return node;
+		});
+		
+		closeTemplateEdit();
+	} catch (e) {
+		error = "Неверный формат JSON в payload";
+		console.error("Invalid JSON:", e);
+	}
+}
+
+// Реактивно обновляем templatePayload при изменении templatePayloadJson
+$: {
+	try {
+		if (templatePayloadJson && templatePayloadJson.trim()) {
+			templatePayload = JSON.parse(templatePayloadJson);
+		} else {
+			templatePayload = {};
+		}
+	} catch (e) {
+		// Игнорируем ошибки парсинга во время ввода
+		templatePayload = {};
+	}
+}
+
+$: templatePreview = renderTemplate(templateBody, templatePayload);
+
+function renderTemplate(body: string, payload: Record<string, any>): string {
+	if (!body) return "";
+	
+	let result = body;
+	// Заменяем переменные вида {{variable}} на значения из payload
+	result = result.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+		const value = payload[key];
+		return value !== undefined ? String(value) : match;
+	});
+	
+	return result;
 }
 
 function addTemplateNode() {
@@ -315,13 +502,26 @@ $: tempPath = (() => {
 				isActive = workflow.isActive || false;
 				
 				// Преобразуем nodes из API формата в CanvasNode
-				nodes = (workflow.nodes || []).map((node) => ({
-					id: node.id,
-					label: (node.config as any)?.label || node.id,
-					description: (node.config as any)?.description || "",
-					variant: ((node.config as any)?.variant || node.type) as NodeVariant,
-					position: node.position || { x: 0, y: 0 },
-				}));
+				nodes = (workflow.nodes || []).map((node) => {
+					const config = node.config as any;
+					const variant = (config?.variant || node.type) as NodeVariant;
+					return {
+						id: node.id,
+						label: config?.label || node.id,
+						description: config?.description || "",
+						variant: variant,
+						position: node.position || { x: 0, y: 0 },
+						...(variant === "channel" && config?.channelId ? {
+							selectedChannelId: config.channelId,
+							selectedChannelName: config.channelName || config.channelId,
+							selectedChannelConnectorId: config.connectorId,
+						} : {}),
+						...(variant === "template" && (config?.templateBody || config?.templatePayload) ? {
+							templateBody: config.templateBody || "",
+							templatePayload: config.templatePayload || {},
+						} : {}),
+					};
+				});
 				
 				// Ждем, пока nodes отрендерятся, перед загрузкой edges
 				await tick();
@@ -376,6 +576,15 @@ $: tempPath = (() => {
 						label: node.label,
 						description: node.description,
 						variant: node.variant,
+						...(node.variant === "channel" && node.selectedChannelId ? {
+							channelId: node.selectedChannelId,
+							channelName: node.selectedChannelName,
+							connectorId: node.selectedChannelConnectorId,
+						} : {}),
+						...(node.variant === "template" && (node.templateBody || node.templatePayload) ? {
+							templateBody: node.templateBody,
+							templatePayload: node.templatePayload,
+						} : {}),
 					},
 				})),
 				edges: edgesData,
@@ -647,13 +856,197 @@ $: tempPath = (() => {
 							></button>
 						{/if}
 					</div>
-					<span class="node-label">{node.label}</span>
-					<p class="node-desc">{node.description}</p>
+					{#if node.variant === 'channel'}
+						<button
+							type="button"
+							class="edit-channel-btn"
+							aria-label="Выбрать канал"
+							title="Выбрать канал"
+							on:click={(e) => {
+								e.stopPropagation();
+								openChannelSelect(node.id);
+							}}
+						>
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.5"
+								class="h-4 w-4"
+							>
+								<path d="M16.862 3.487 20.51 7.136a1.5 1.5 0 0 1 0 2.121l-9.193 9.193-4.593.511a1 1 0 0 1-1.1-1.1l.511-4.593 9.193-9.193a1.5 1.5 0 0 1 2.121 0Z" />
+								<path d="M19 11.5 12.5 5" />
+							</svg>
+						</button>
+					{/if}
+					{#if node.variant === 'template'}
+						<button
+							type="button"
+							class="edit-channel-btn"
+							aria-label="Редактировать шаблон"
+							title="Редактировать шаблон"
+							on:click={(e) => {
+								e.stopPropagation();
+								openTemplateEdit(node.id);
+							}}
+						>
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.5"
+								class="h-4 w-4"
+							>
+								<path d="M16.862 3.487 20.51 7.136a1.5 1.5 0 0 1 0 2.121l-9.193 9.193-4.593.511a1 1 0 0 1-1.1-1.1l.511-4.593 9.193-9.193a1.5 1.5 0 0 1 2.121 0Z" />
+								<path d="M19 11.5 12.5 5" />
+							</svg>
+						</button>
+					{/if}
+					<span class="node-label">
+						{#if node.variant === 'channel' && node.selectedChannelConnectorId}
+							{@const connectorType = getConnectorType(node.selectedChannelConnectorId)}
+							{#if connectorType === 'telegram'}
+								<span class="connector-icon">
+									<TelegramIcon size={16} />
+								</span>
+							{/if}
+						{/if}
+						{node.label}
+					</span>
+					<p class="node-desc">
+						{#if node.variant === 'channel' && node.selectedChannelName}
+							{node.selectedChannelName}
+						{:else}
+							{node.description}
+						{/if}
+					</p>
 				</div>
 			{/each}
 		</div>
 	</div>
 </section>
+
+<!-- Модальное окно редактирования template -->
+{#if templateEditModalOpen}
+	<div class="modal-overlay" on:click={closeTemplateEdit} on:keydown={(e) => e.key === 'Escape' && closeTemplateEdit()}>
+		<div class="template-modal-content" on:click|stopPropagation>
+			<div class="template-modal-header">
+				<h2 class="template-modal-title">Редактировать шаблон</h2>
+				<button
+					type="button"
+					class="modal-close"
+					on:click={closeTemplateEdit}
+					aria-label="Закрыть"
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-5 w-5">
+						<line x1="18" y1="6" x2="6" y2="18" />
+						<line x1="6" y1="6" x2="18" y2="18" />
+					</svg>
+				</button>
+			</div>
+			<div class="template-modal-body">
+				<!-- Левая панель: Payload -->
+				<div class="template-panel">
+					<div class="template-panel-header">
+						<h3 class="template-panel-title">Payload</h3>
+					</div>
+					<div class="template-panel-content">
+						<textarea
+							class="template-editor"
+							bind:value={templatePayloadJson}
+							placeholder={`{"key": "value"}`}
+							spellcheck="false"
+						></textarea>
+					</div>
+				</div>
+				
+				<!-- Средняя панель: Template -->
+				<div class="template-panel">
+					<div class="template-panel-header">
+						<h3 class="template-panel-title">Template</h3>
+					</div>
+					<div class="template-panel-content">
+						<textarea
+							class="template-editor"
+							bind:value={templateBody}
+							placeholder={`Введите шаблон с переменными {{variable}}`}
+							spellcheck="false"
+						></textarea>
+					</div>
+				</div>
+				
+				<!-- Правая панель: Preview -->
+				<div class="template-panel">
+					<div class="template-panel-header">
+						<h3 class="template-panel-title">Preview</h3>
+					</div>
+					<div class="template-panel-content template-preview">
+						{#if templatePreview}
+							<div class="template-preview-content">{templatePreview}</div>
+						{:else}
+							<div class="template-preview-placeholder">Предпросмотр появится после ввода шаблона</div>
+						{/if}
+					</div>
+				</div>
+			</div>
+			<div class="template-modal-footer">
+				<button type="button" class="btn-secondary" on:click={closeTemplateEdit}>Отменить</button>
+				<button type="button" class="btn-primary" on:click={saveTemplate}>Сохранить</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Модальное окно выбора канала -->
+{#if channelSelectModalOpen}
+	<div class="modal-overlay" on:click={closeChannelSelect} on:keydown={(e) => e.key === 'Escape' && closeChannelSelect()}>
+		<div class="modal-content" on:click|stopPropagation>
+			<div class="modal-header">
+				<h2 class="modal-title">Выберите канал</h2>
+				<button
+					type="button"
+					class="modal-close"
+					on:click={closeChannelSelect}
+					aria-label="Закрыть"
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-5 w-5">
+						<line x1="18" y1="6" x2="6" y2="18" />
+						<line x1="6" y1="6" x2="18" y2="18" />
+					</svg>
+				</button>
+			</div>
+			<div class="modal-body">
+				{#if loadingChannels}
+					<p class="text-sm text-muted">Загрузка каналов...</p>
+				{:else if availableChannels.length === 0}
+					<p class="text-sm text-muted">Нет доступных каналов</p>
+				{:else}
+					<div class="channel-list">
+						{#each availableChannels as channel}
+							<button
+								type="button"
+								class="channel-item"
+								on:click={() => selectChannel(channel)}
+							>
+								<div class="channel-item-content">
+									<div class="channel-item-name">{channel.displayName || channel.name}</div>
+									{#if channel.description}
+										<div class="channel-item-desc">{channel.description}</div>
+									{/if}
+								</div>
+								{#if channel.muted}
+									<span class="channel-muted-badge">Заглушен</span>
+								{/if}
+							</button>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		</div>
+	</div>
+{/if}
 
 <style>
 	.workspace {
@@ -686,7 +1079,7 @@ $: tempPath = (() => {
 		gap: 1rem;
 		padding: 1.25rem 1.5rem;
 		background: rgba(255, 255, 255, 0.85);
-		border-bottom: 1px солид rgba(226, 232, 240, 0.7);
+		border-bottom: 1px solid rgba(226, 232, 240, 0.7);
 		backdrop-filter: blur(6px);
 	}
 
@@ -701,7 +1094,7 @@ $: tempPath = (() => {
 		position: absolute;
 		width: 240px;
 		border-radius: 1.25rem;
-		border: 1px солид rgba(148, 163, 184, 0.3);
+		border: 1px solid rgba(148, 163, 184, 0.3);
 		padding: 1.5rem;
 		background: rgba(248, 250, 252, 0.92);
 		box-shadow: 0 18px 40px -24px rgba(37, 99, 235, 0.35);
@@ -723,7 +1116,7 @@ $: tempPath = (() => {
 		width: 28px;
 		height: 28px;
 		border-radius: 999px;
-		border: 1px солид rgba(148, 163, 184, 0.3);
+		border: 1px solid rgba(148, 163, 184, 0.3);
 		background: #fff;
 		color: #64748b;
 		box-shadow: 0 6px 16px -12px rgba(15, 23, 42, 0.4);
@@ -739,6 +1132,8 @@ $: tempPath = (() => {
 
 	.node-label {
 		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
 		padding: 0.25rem 0.75rem;
 		border-radius: 999px;
 		font-size: 0.75rem;
@@ -747,6 +1142,20 @@ $: tempPath = (() => {
 		letter-spacing: 0.16em;
 		background: rgba(37, 99, 235, 0.1);
 		color: #2563eb;
+	}
+
+	.connector-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 16px;
+		height: 16px;
+		flex-shrink: 0;
+	}
+
+	.connector-icon svg {
+		width: 100%;
+		height: 100%;
 	}
 
 	.node-desc {
@@ -877,5 +1286,331 @@ $: tempPath = (() => {
 		color: #2563eb;
 		border-color: rgba(37, 99, 235, 0.5);
 		transform: translateY(-1px);
+	}
+
+	.edit-channel-btn {
+		position: absolute;
+		top: 0.75rem;
+		left: 0.75rem;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		border-radius: 999px;
+		border: 1px solid rgba(148, 163, 184, 0.3);
+		background: #fff;
+		color: #64748b;
+		box-shadow: 0 6px 16px -12px rgba(15, 23, 42, 0.4);
+		transition: 120ms ease;
+		cursor: pointer;
+		z-index: 10;
+		pointer-events: all;
+	}
+
+	.edit-channel-btn:hover {
+		color: #2563eb;
+		border-color: rgba(37, 99, 235, 0.5);
+		background: rgba(37, 99, 235, 0.1);
+		transform: translateY(-1px);
+	}
+
+	.edit-template-btn {
+		position: absolute;
+		top: 0.75rem;
+		left: 3.5rem;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		border-radius: 999px;
+		border: 1px solid rgba(148, 163, 184, 0.3);
+		background: #fff;
+		color: #64748b;
+		box-shadow: 0 6px 16px -12px rgba(15, 23, 42, 0.4);
+		transition: 120ms ease;
+		cursor: pointer;
+		z-index: 10;
+		pointer-events: all;
+	}
+
+	.edit-template-btn:hover {
+		color: #10b981;
+		border-color: rgba(16, 185, 129, 0.5);
+		background: rgba(16, 185, 129, 0.1);
+		transform: translateY(-1px);
+	}
+
+	.modal-overlay {
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.5);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 1000;
+		backdrop-filter: blur(4px);
+	}
+
+	.modal-content {
+		background: #fff;
+		border-radius: 1rem;
+		box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+		width: 90%;
+		max-width: 500px;
+		max-height: 80vh;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+
+	.modal-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 1.5rem;
+		border-bottom: 1px solid rgba(226, 232, 240, 0.7);
+	}
+
+	.modal-title {
+		font-size: 1.25rem;
+		font-weight: 600;
+		color: #1e293b;
+		margin: 0;
+	}
+
+	.modal-close {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		border-radius: 999px;
+		border: 1px solid rgba(148, 163, 184, 0.3);
+		background: #fff;
+		color: #64748b;
+		cursor: pointer;
+		transition: 120ms ease;
+	}
+
+	.modal-close:hover {
+		color: #1e293b;
+		border-color: rgba(148, 163, 184, 0.5);
+		background: rgba(248, 250, 252, 0.8);
+	}
+
+	.modal-body {
+		padding: 1.5rem;
+		overflow-y: auto;
+		flex: 1;
+	}
+
+	.channel-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.channel-item {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 1rem;
+		border: 1px solid rgba(148, 163, 184, 0.3);
+		border-radius: 0.75rem;
+		background: rgba(248, 250, 252, 0.5);
+		cursor: pointer;
+		transition: 120ms ease;
+		text-align: left;
+	}
+
+	.channel-item:hover {
+		border-color: rgba(37, 99, 235, 0.5);
+		background: rgba(37, 99, 235, 0.05);
+		transform: translateY(-1px);
+		box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+	}
+
+	.channel-item-content {
+		flex: 1;
+	}
+
+	.channel-item-name {
+		font-weight: 600;
+		color: #1e293b;
+		margin-bottom: 0.25rem;
+	}
+
+	.channel-item-desc {
+		font-size: 0.875rem;
+		color: #64748b;
+	}
+
+	.channel-muted-badge {
+		font-size: 0.75rem;
+		padding: 0.25rem 0.5rem;
+		border-radius: 999px;
+		background: rgba(148, 163, 184, 0.2);
+		color: #64748b;
+		margin-left: 0.75rem;
+	}
+
+	.template-modal-content {
+		background: #fff;
+		border-radius: 1rem;
+		box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+		width: 95%;
+		max-width: 1400px;
+		max-height: 90vh;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+
+	.template-modal-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 1.5rem;
+		border-bottom: 1px solid rgba(226, 232, 240, 0.7);
+	}
+
+	.template-modal-title {
+		font-size: 1.25rem;
+		font-weight: 600;
+		color: #1e293b;
+		margin: 0;
+	}
+
+	.template-modal-body {
+		display: grid;
+		grid-template-columns: 1fr 1fr 1fr;
+		gap: 1rem;
+		padding: 1.5rem;
+		flex: 1;
+		overflow: hidden;
+		min-height: 0;
+	}
+
+	.template-panel {
+		display: flex;
+		flex-direction: column;
+		border: 1px solid rgba(148, 163, 184, 0.3);
+		border-radius: 0.75rem;
+		overflow: hidden;
+		background: rgba(248, 250, 252, 0.5);
+		min-height: 0;
+	}
+
+	.template-panel-header {
+		padding: 0.75rem 1rem;
+		background: rgba(255, 255, 255, 0.8);
+		border-bottom: 1px solid rgba(148, 163, 184, 0.3);
+	}
+
+	.template-panel-title {
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: #1e293b;
+		margin: 0;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.template-panel-content {
+		flex: 1;
+		overflow: auto;
+		padding: 1rem;
+		min-height: 0;
+	}
+
+	.template-editor {
+		width: 100%;
+		height: 100%;
+		min-height: 400px;
+		font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+		font-size: 0.875rem;
+		line-height: 1.5;
+		border: none;
+		background: transparent;
+		color: #1e293b;
+		resize: none;
+		outline: none;
+	}
+
+	.template-preview {
+		background: #fff;
+	}
+
+	.template-preview-content {
+		white-space: pre-wrap;
+		word-wrap: break-word;
+		font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+		font-size: 0.875rem;
+		line-height: 1.5;
+		color: #1e293b;
+	}
+
+	.template-preview-placeholder {
+		color: #94a3b8;
+		font-style: italic;
+		text-align: center;
+		padding: 2rem;
+	}
+
+	.template-modal-footer {
+		display: flex;
+		justify-content: flex-end;
+		gap: 0.75rem;
+		padding: 1.5rem;
+		border-top: 1px solid rgba(226, 232, 240, 0.7);
+	}
+
+	.btn-secondary {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		padding: 0.5rem 1.25rem;
+		border-radius: 0.75rem;
+		border: 1px solid rgba(148, 163, 184, 0.3);
+		background: #fff;
+		color: #64748b;
+		font-size: 0.875rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: 120ms ease;
+	}
+
+	.btn-secondary:hover {
+		color: #1e293b;
+		border-color: rgba(148, 163, 184, 0.5);
+		background: rgba(248, 250, 252, 0.8);
+	}
+
+	.btn-primary {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		padding: 0.5rem 1.25rem;
+		border-radius: 0.75rem;
+		border: none;
+		background: #2563eb;
+		color: #fff;
+		font-size: 0.875rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: 120ms ease;
+	}
+
+	.btn-primary:hover {
+		background: #1d4ed8;
+	}
+
+	.btn-primary:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 </style>
