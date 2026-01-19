@@ -21,8 +21,9 @@ dev-client:
 
 # Запуск API и Client вместе в dev режиме
 dev:
-	@echo "Запуск API и Client в dev режиме..."
-	@trap 'kill 0' EXIT; \
-	cd ../api && go run ./main.go & \
+	@echo "Запуск docker-compose, API и Client в dev режиме..."
+	@trap 'cd .. && docker compose -f .ops/compose.dev.yml down; kill 0' EXIT; \
+	cd .. && docker compose -f .ops/compose.dev.yml up -d && \
+	cd api && go run ./main.go & \
 	cd ../client && bun dev & \
 	wait

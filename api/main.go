@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
@@ -15,6 +16,7 @@ import (
 
 	"notiair/handlers"
 	"notiair/internal/config"
+	"notiair/internal/persistence/channel"
 	"notiair/internal/persistence/database"
 	"notiair/internal/persistence/outbox"
 	"notiair/internal/persistence/serviceconfig"
@@ -50,7 +52,7 @@ func initDatabase() {
 
 	serviceConfigRepo = serviceconfig.NewRepository(dbConn)
 
-	if err := dbConn.AutoMigrate(&outbox.Message{}, &serviceconfig.ServiceConfig{}); err != nil {
+	if err := dbConn.AutoMigrate(&outbox.Message{}, &serviceconfig.ServiceConfig{}, &channel.Channel{}); err != nil {
 		log.Fatalf("migrate db: %v", err)
 	}
 
@@ -83,7 +85,8 @@ func buildApplication() *fiber.App {
 
 	notificationService := services.NewNotificationService(routerSvc, queueClient, outboxRepo)
 	queueInspector := queue.NewNoopInspector()
-	apiHandlers := handlers.NewAPI(notificationService, templateRepo, workflowRepo, queueInspector)
+	channelRepo := channel.NewRepository(dbConn)
+	apiHandlers := handlers.NewAPI(notificationService, templateRepo, workflowRepo, queueInspector, serviceConfigRepo, channelRepo)
 
 	app := fiber.New(fiber.Config{
 		AppName:      "NotiAir Notification API",
@@ -91,11 +94,17 @@ func buildApplication() *fiber.App {
 		ReadTimeout:  5 * time.Second,
 	})
 
+	app.Use(cors.New(cors.Config{
+		AllowOrigins:     "*",
+		AllowMethods:     "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+		AllowHeaders:     "Origin,Content-Type,Accept,Authorization",
+		AllowCredentials: false,
+	}))
 	app.Use(requestid.New())
 	app.Use(recover.New())
 	app.Use(logger.New())
 
-	routes.New(apiHandlers).Register(app.Group("/v1"))
+	routes.New(apiHandlers).Register(app.Group("/api/v1"))
 
 	return app
 }

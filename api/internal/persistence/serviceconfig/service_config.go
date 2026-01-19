@@ -30,6 +30,8 @@ type ServiceConfig struct {
 type Repository interface {
 	List(ctx context.Context) ([]ServiceConfig, error)
 	Create(ctx context.Context, input CreateInput) (ServiceConfig, error)
+	Update(ctx context.Context, id string, input UpdateInput) (ServiceConfig, error)
+	Delete(ctx context.Context, id string) error
 	SetActive(ctx context.Context, id string, active bool) error
 	SetDefault(ctx context.Context, id string) error
 	EnsureDefault(ctx context.Context, svcType Type) (ServiceConfig, error)
@@ -40,6 +42,10 @@ type CreateInput struct {
 	IsDefault bool
 	IsActive  bool
 	Settings  map[string]any
+}
+
+type UpdateInput struct {
+	Settings map[string]any
 }
 
 type repository struct {
@@ -85,6 +91,29 @@ func (r *repository) Create(ctx context.Context, input CreateInput) (ServiceConf
 
 		return nil
 	})
+}
+
+func (r *repository) Update(ctx context.Context, id string, input UpdateInput) (ServiceConfig, error) {
+	var cfg ServiceConfig
+	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&cfg).Error; err != nil {
+		return ServiceConfig{}, err
+	}
+
+	settings := datatypes.JSONMap{}
+	for k, v := range input.Settings {
+		settings[k] = v
+	}
+
+	cfg.Settings = settings
+	if err := r.db.WithContext(ctx).Save(&cfg).Error; err != nil {
+		return ServiceConfig{}, err
+	}
+
+	return cfg, nil
+}
+
+func (r *repository) Delete(ctx context.Context, id string) error {
+	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&ServiceConfig{}).Error
 }
 
 func (r *repository) SetActive(ctx context.Context, id string, active bool) error {

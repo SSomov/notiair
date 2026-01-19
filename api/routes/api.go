@@ -21,4 +21,13 @@ func (a *API) Register(router fiber.Router) {
 	router.Get("/workflows", a.handlers.ListWorkflows)
 	router.Post("/workflows", a.handlers.SaveWorkflow)
 	router.Get("/queues/pending", a.handlers.ListQueue)
+	router.Get("/connectors/telegram", a.handlers.ListTelegramTokens)
+	router.Post("/connectors/telegram", a.handlers.CreateTelegramToken)
+	router.Put("/connectors/telegram/:id", a.handlers.UpdateTelegramToken)
+	router.Patch("/connectors/telegram/:id/active", a.handlers.ToggleTelegramTokenActive)
+	router.Delete("/connectors/telegram/:id", a.handlers.DeleteTelegramToken)
+	router.Get("/connectors/:connectorId/channels", a.handlers.ListChannels)
+	router.Post("/connectors/:connectorId/channels", a.handlers.CreateChannel)
+	router.Put("/channels/:id", a.handlers.UpdateChannel)
+	router.Delete("/channels/:id", a.handlers.DeleteChannel)
 }

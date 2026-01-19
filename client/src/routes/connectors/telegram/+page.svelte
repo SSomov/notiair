@@ -1,59 +1,123 @@
 <script lang="ts">
-type TelegramToken = {
-	id: string;
-	secret: string;
-	comment: string;
-};
+	import { onMount } from "svelte";
+	import {
+		listTelegramTokens,
+		createTelegramToken,
+		updateTelegramToken,
+		deleteTelegramToken,
+		toggleTelegramTokenActive,
+		type TelegramToken,
+	} from "$lib/api";
 
-let tokens: TelegramToken[] = [];
+	let tokens: TelegramToken[] = [];
+	let loading = true;
+	let error: string | null = null;
 
-let _tokenModalOpen = false;
-let editingToken: TelegramToken | null = null;
-let secretInput = "";
-let commentInput = "";
+	let tokenModalOpen = false;
+	let editingToken: TelegramToken | null = null;
+	let nameInput = "";
+	let secretInput = "";
+	let commentInput = "";
+	let saving = false;
 
-function _openTokenModal(token?: TelegramToken) {
-	editingToken = token || null;
-	secretInput = token?.secret || "";
-	commentInput = token?.comment || "";
-	_tokenModalOpen = true;
-}
-
-function closeTokenModal() {
-	_tokenModalOpen = false;
-	editingToken = null;
-	secretInput = "";
-	commentInput = "";
-}
-
-function _saveToken() {
-	if (!secretInput.trim()) return;
-
-	if (editingToken) {
-		tokens = tokens.map((token) =>
-			token.id === editingToken.id
-				? { ...token, secret: secretInput.trim(), comment: commentInput.trim() }
-				: token,
-		);
-	} else {
-		const nextIndex = tokens.length + 1;
-		const id = `#TG-${String(nextIndex).padStart(3, "0")}`;
-		tokens = [
-			...tokens,
-			{
-				id,
-				secret: secretInput.trim(),
-				comment: commentInput.trim(),
-			},
-		];
+	function maskSecret(secret: string): string {
+		if (!secret || secret.length <= 8) return "••••••••";
+		const start = secret.substring(0, 4);
+		const end = secret.substring(secret.length - 4);
+		const masked = "•".repeat(Math.min(12, secret.length - 8));
+		return `${start}${masked}${end}`;
 	}
 
-	closeTokenModal();
-}
+	onMount(async () => {
+		await loadTokens();
+	});
 
-function _deleteToken(id: string) {
-	tokens = tokens.filter((token) => token.id !== id);
-}
+	async function loadTokens() {
+		try {
+			loading = true;
+			error = null;
+			const data = await listTelegramTokens();
+			tokens = Array.isArray(data) ? data : [];
+		} catch (e) {
+			error = e instanceof Error ? e.message : "Не удалось загрузить токены";
+			tokens = [];
+		} finally {
+			loading = false;
+		}
+	}
+
+	function openTokenModal(token?: TelegramToken) {
+		editingToken = token || null;
+		nameInput = token?.name || "";
+		secretInput = token?.secret || "";
+		commentInput = token?.comment || "";
+		tokenModalOpen = true;
+		error = null;
+	}
+
+	function closeTokenModal() {
+		tokenModalOpen = false;
+		editingToken = null;
+		nameInput = "";
+		secretInput = "";
+		commentInput = "";
+		error = null;
+	}
+
+	async function saveToken() {
+		if (!secretInput.trim() || !nameInput.trim() || saving) return;
+
+		try {
+			saving = true;
+			error = null;
+
+			if (editingToken) {
+				const updated = await updateTelegramToken(editingToken.id, {
+					name: nameInput.trim(),
+					secret: secretInput.trim(),
+					comment: commentInput.trim(),
+				});
+				tokens = tokens.map((token) =>
+					token.id === editingToken.id ? updated : token,
+				);
+			} else {
+				const created = await createTelegramToken({
+					name: nameInput.trim(),
+					secret: secretInput.trim(),
+					comment: commentInput.trim(),
+				});
+				tokens = [...tokens, created];
+			}
+
+			closeTokenModal();
+		} catch (e) {
+			error = e instanceof Error ? e.message : "Не удалось сохранить токен";
+		} finally {
+			saving = false;
+		}
+	}
+
+	async function deleteToken(id: string) {
+		if (!confirm("Вы уверены, что хотите удалить этот токен?")) return;
+
+		try {
+			error = null;
+			await deleteTelegramToken(id);
+			tokens = tokens.filter((token) => token.id !== id);
+		} catch (e) {
+			error = e instanceof Error ? e.message : "Не удалось удалить токен";
+		}
+	}
+
+	async function toggleActive(token: TelegramToken) {
+		try {
+			error = null;
+			const updated = await toggleTelegramTokenActive(token.id, !token.isActive);
+			tokens = tokens.map((t) => (t.id === token.id ? updated : t));
+		} catch (e) {
+			error = e instanceof Error ? e.message : "Не удалось изменить статус токена";
+		}
+	}
 </script>
 
 <section class="space-y-8 px-4 pb-12 pt-2 md:px-12 md:pt-4">
@@ -83,7 +147,17 @@ function _deleteToken(id: string) {
       </button>
     </div>
 
-    {#if tokens.length === 0}
+    {#if error}
+      <div class="glass-card p-4 bg-red-50 border-red-200">
+        <p class="text-sm text-red-600">{error}</p>
+      </div>
+    {/if}
+
+    {#if loading}
+      <div class="glass-card p-8 text-center">
+        <p class="text-sm text-muted">Загрузка токенов...</p>
+      </div>
+    {:else if tokens.length === 0}
       <div class="glass-card p-8 text-center">
         <p class="text-sm text-muted">Нет добавленных токенов</p>
       </div>
@@ -93,9 +167,21 @@ function _deleteToken(id: string) {
           <div class="glass-card p-4 space-y-3">
             <div class="flex items-start justify-between gap-3">
               <div class="flex-1 space-y-2">
-                <div class="flex items-center gap-3">
-                  <p class="font-semibold text-text">{token.id}</p>
-                  <span class="text-xs text-muted font-mono truncate max-w-md">{token.secret}</span>
+                <div class="space-y-1">
+                  <div class="flex items-center justify-between">
+                    <p class="font-semibold text-text">{token.name || "Без названия"}</p>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={token.isActive}
+                        on:change={() => toggleActive(token)}
+                        class="sr-only peer"
+                      />
+                      <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-accent rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
+                      <span class="ml-2 text-xs text-muted">{token.isActive ? "Активен" : "Неактивен"}</span>
+                    </label>
+                  </div>
+                  <span class="text-xs text-muted font-mono">{maskSecret(token.secret)}</span>
                 </div>
                 {#if token.comment}
                   <p class="text-sm text-muted">{token.comment}</p>
@@ -151,6 +237,16 @@ function _deleteToken(id: string) {
         </div>
         <div class="modal-body space-y-4">
           <div class="space-y-1">
+            <label class="text-sm font-medium text-text" for="name-input">Название</label>
+            <input
+              id="name-input"
+              class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
+              bind:value={nameInput}
+              placeholder="Например: Основной бот"
+              autocomplete="off"
+            />
+          </div>
+          <div class="space-y-1">
             <label class="text-sm font-medium text-text" for="secret-input">Bot API Token</label>
             <input
               id="secret-input"
@@ -176,9 +272,9 @@ function _deleteToken(id: string) {
             type="button"
             class="btn-primary"
             on:click={saveToken}
-            disabled={!secretInput.trim()}
+            disabled={!secretInput.trim() || !nameInput.trim() || saving}
           >
-            {editingToken ? 'Сохранить' : 'Добавить'}
+            {saving ? 'Сохранение...' : editingToken ? 'Сохранить' : 'Добавить'}
           </button>
         </div>
       </div>

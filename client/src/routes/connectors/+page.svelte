@@ -1,13 +1,19 @@
 <script lang="ts">
-type Connector = {
-	slug: "telegram" | "slack" | "smtp";
-	name: string;
-	description: string;
-	badge: string;
-	color: string;
-	placeholder: string;
-	comingSoon?: boolean;
-};
+	import { onMount } from "svelte";
+	import { listTelegramTokens, type TelegramToken } from "$lib/api";
+
+	type Connector = {
+		slug: "telegram" | "slack" | "smtp";
+		name: string;
+		description: string;
+		badge: string;
+		color: string;
+		placeholder: string;
+		comingSoon?: boolean;
+	};
+
+	let telegramTokens: TelegramToken[] = [];
+	let loading = true;
 
 const connectors: Connector[] = [
 	{
@@ -44,16 +50,30 @@ type Note = {
 	comment: string;
 };
 
-let notes: Record<Connector["slug"], Note[]> = {
-	telegram: [],
-	slack: [],
-	smtp: [],
-};
+	let notes: Record<Connector["slug"], Note[]> = {
+		telegram: [],
+		slack: [],
+		smtp: [],
+	};
 
-let modalOpen = false;
-let current: Connector | null = null;
-let secretInput = "";
-let commentInput = "";
+	let modalOpen = false;
+	let current: Connector | null = null;
+	let secretInput = "";
+	let commentInput = "";
+
+	onMount(async () => {
+		try {
+			telegramTokens = await listTelegramTokens();
+		} catch (e) {
+			console.error("Failed to load telegram tokens:", e);
+			telegramTokens = [];
+		} finally {
+			loading = false;
+		}
+	});
+
+	$: activeTelegramCount = telegramTokens.filter((t) => t.isActive).length;
+	$: totalTelegramCount = telegramTokens.length;
 
 function openModal(connector: Connector) {
 	current = connector;
@@ -122,6 +142,16 @@ function deleteNote(slug: Connector["slug"], id: string) {
             <span class="pill capitalize">{connector.badge}</span>
           </div>
           <p class="text-sm text-muted">{connector.description}</p>
+          {#if !loading}
+            <div class="text-sm text-muted">
+              <span class="font-medium text-text">{activeTelegramCount}</span>
+              {#if totalTelegramCount > 0}
+                <span> из {totalTelegramCount} активны</span>
+              {:else}
+                <span> активных коннекторов</span>
+              {/if}
+            </div>
+          {/if}
 
           <div class="space-y-3">
             {#if notes[connector.slug].length > 0}

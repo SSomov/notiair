@@ -1,197 +1,296 @@
 <script lang="ts">
-type ChannelLink = {
-	name: string;
-	description: string;
-	muted: boolean;
-};
+	import { onMount } from "svelte";
+	import {
+		listTelegramTokens,
+		listChannels,
+		createChannel,
+		updateChannel,
+		deleteChannel,
+		type TelegramToken,
+		type Channel,
+	} from "$lib/api";
 
-type ConnectorEntry = {
-	id: string;
-	comment: string;
-	channels: ChannelLink[];
-};
+	type ChannelLink = Channel & {
+		// Alias для совместимости
+	};
 
-type ChannelGroup = {
-	slug: "telegram" | "slack" | "smtp";
-	name: string;
-	icon: string;
-	color: string;
-	description: string;
-	connectors: ConnectorEntry[];
-};
+	type ConnectorEntry = {
+		id: string;
+		name: string;
+		comment: string;
+		channels: ChannelLink[];
+	};
 
-let groups: ChannelGroup[] = [
-	{
-		slug: "telegram",
-		name: "Telegram",
-		icon: "✈️",
-		color: "text-accent",
-		description: "Боты и каналы Telegram.",
-		connectors: [
-			{
-				id: "#TG-001",
-				comment: "Основной токен для product-уведомлений",
-				channels: [
-					{
-						name: "@product-updates",
-						description: "Редакционные апдейты и релизы",
-						muted: false,
-					},
-					{
-						name: "@support",
-						description: "Поддержка клиентов и эскалации",
-						muted: false,
-					},
-				],
-			},
-		],
-	},
-	{
-		slug: "slack",
-		name: "Slack",
-		icon: "💬",
-		color: "text-warning",
-		description: "Каналы Slack.",
-		connectors: [
-			{
-				id: "#SL-001",
-				comment: "Workspace alerts",
-				channels: [
-					{
-						name: "#on-call",
-						description: "Дежурная смена и инциденты",
-						muted: false,
-					},
-					{
-						name: "#marketing",
-						description: "Коммуникации маркетинга",
-						muted: false,
-					},
-				],
-			},
-		],
-	},
-	{
-		slug: "smtp",
-		name: "SMTP",
-		icon: "📧",
-		color: "text-positive",
-		description: "Почтовые рассылки и транзакционные письма.",
-		connectors: [
-			{
-				id: "#SM-001",
-				comment: "Primary transactional SMTP",
-				channels: [
-					{
-						name: "alerts@notiair",
-						description: "Оповещения инфраструктуры",
-						muted: false,
-					},
-					{
-						name: "billing@notiair",
-						description: "Счета и биллинговые уведомления",
-						muted: false,
-					},
-				],
-			},
-		],
-	},
-];
+	type ChannelGroup = {
+		slug: "telegram" | "slack" | "smtp";
+		name: string;
+		icon: string;
+		color: string;
+		description: string;
+		connectors: ConnectorEntry[];
+	};
 
-let activeGroup: ChannelGroup | null = null;
-let activeEntry: ConnectorEntry | null = null;
-let channelInput = "";
-let channelDescription = "";
-let channelModalOpen = false;
+	let telegramTokens: TelegramToken[] = [];
+	let loading = true;
+	let error: string | null = null;
+	let saving = false;
 
-function openChannelModal(group: ChannelGroup, entry: ConnectorEntry) {
-	activeGroup = group;
-	activeEntry = entry;
-	channelInput = "";
-	channelDescription = "";
-	channelModalOpen = true;
-}
+	let groups: ChannelGroup[] = [
+		{
+			slug: "telegram",
+			name: "Telegram",
+			icon: "✈️",
+			color: "text-accent",
+			description: "Боты и каналы Telegram.",
+			connectors: [],
+		},
+	];
 
-function closeModal() {
-	channelModalOpen = false;
-	activeGroup = null;
-	activeEntry = null;
-	channelInput = "";
-	channelDescription = "";
-}
+	let activeGroup: ChannelGroup | null = null;
+	let activeEntry: ConnectorEntry | null = null;
+	let editingChannel: ChannelLink | null = null;
+	let channelInput = "";
+	let channelNameInput = "";
+	let channelDescription = "";
+	let channelModalOpen = false;
 
-function saveChannel() {
-	if (!activeGroup || !activeEntry || !channelInput.trim()) return;
-	const value = channelInput.trim();
-	const description = channelDescription.trim();
-
-	groups = groups.map((group) => {
-		if (group.slug !== activeGroup?.slug) return group;
-		return {
-			...group,
-			connectors: group.connectors.map((entry) =>
-				entry.id === activeEntry.id
-					? {
-							...entry,
-							channels: [
-								...entry.channels,
-								{ name: value, description, muted: false },
-							],
-						}
-					: entry,
-			),
-		};
+	onMount(async () => {
+		await loadData();
 	});
-	closeModal();
-}
 
-function removeChannel(
-	groupSlug: ChannelGroup["slug"],
-	connectorId: string,
-	channelName: string,
-) {
-	groups = groups.map((group) => {
-		if (group.slug !== groupSlug) return group;
-		return {
-			...group,
-			connectors: group.connectors.map((entry) =>
-				entry.id === connectorId
-					? {
-							...entry,
-							channels: entry.channels.filter(
-								(channel) => channel.name !== channelName,
-							),
-						}
-					: entry,
-			),
-		};
-	});
-}
+	async function loadData() {
+		try {
+			loading = true;
+			error = null;
+			telegramTokens = await listTelegramTokens();
+			await updateGroups();
+		} catch (e) {
+			console.error("Failed to load data:", e);
+			error = e instanceof Error ? e.message : "Не удалось загрузить данные";
+			telegramTokens = [];
+			await updateGroups();
+		} finally {
+			loading = false;
+		}
+	}
 
-function toggleMute(
-	groupSlug: ChannelGroup["slug"],
-	connectorId: string,
-	channelName: string,
-) {
-	groups = groups.map((group) => {
-		if (group.slug !== groupSlug) return group;
-		return {
-			...group,
-			connectors: group.connectors.map((entry) =>
-				entry.id === connectorId
-					? {
-							...entry,
-							channels: entry.channels.map((channel) =>
-								channel.name === channelName
-									? { ...channel, muted: !channel.muted }
-									: channel,
-							),
-						}
-					: entry,
-			),
-		};
-	});
-}
+	async function updateGroups() {
+		groups = await Promise.all(
+			groups.map(async (group) => {
+				if (group.slug === "telegram") {
+					const connectors = await Promise.all(
+						telegramTokens
+							.filter((token) => token.isActive)
+							.map(async (token) => {
+								try {
+									const channels = await listChannels(token.id);
+									return {
+										id: token.id,
+										name: token.name || "Без названия",
+										comment: token.comment || "",
+										channels: channels.map((ch) => ({
+											id: ch.id,
+											name: ch.name,
+											displayName: ch.displayName,
+											description: ch.description,
+											muted: ch.muted,
+										})),
+									};
+								} catch (e) {
+									console.error(`Failed to load channels for ${token.id}:`, e);
+									return {
+										id: token.id,
+										name: token.name || "Без названия",
+										comment: token.comment || "",
+										channels: [],
+									};
+								}
+							}),
+					);
+					return {
+						...group,
+						connectors,
+					};
+				}
+				return group;
+			}),
+		);
+	}
+
+	$: filteredGroups = groups.filter((group) => group.connectors.length > 0);
+
+	function openChannelModal(group: ChannelGroup, entry: ConnectorEntry, channel?: ChannelLink) {
+		activeGroup = group;
+		activeEntry = entry;
+		editingChannel = channel || null;
+		channelInput = channel?.name || "";
+		channelNameInput = channel?.displayName || "";
+		channelDescription = channel?.description || "";
+		channelModalOpen = true;
+	}
+
+	function closeModal() {
+		channelModalOpen = false;
+		activeGroup = null;
+		activeEntry = null;
+		editingChannel = null;
+		channelInput = "";
+		channelNameInput = "";
+		channelDescription = "";
+	}
+
+	async function saveChannel() {
+		if (!activeGroup || !activeEntry || !channelInput.trim() || saving) return;
+
+		try {
+			saving = true;
+			error = null;
+
+			const value = channelInput.trim();
+			const displayName = channelNameInput.trim() || undefined;
+			const description = channelDescription.trim();
+
+			if (editingChannel) {
+				const updated = await updateChannel(editingChannel.id, {
+					name: value,
+					displayName,
+					description,
+					muted: editingChannel.muted,
+				});
+				groups = groups.map((group) => {
+					if (group.slug !== activeGroup?.slug) return group;
+					return {
+						...group,
+						connectors: group.connectors.map((entry) =>
+							entry.id === activeEntry.id
+								? {
+										...entry,
+										channels: entry.channels.map((ch) =>
+											ch.id === editingChannel.id
+												? {
+														id: updated.id,
+														name: updated.name,
+														displayName: updated.displayName,
+														description: updated.description,
+														muted: updated.muted,
+													}
+												: ch,
+										),
+									}
+								: entry,
+						),
+					};
+				});
+			} else {
+				const created = await createChannel(activeEntry.id, {
+					name: value,
+					displayName,
+					description,
+					muted: false,
+				});
+				groups = groups.map((group) => {
+					if (group.slug !== activeGroup?.slug) return group;
+					return {
+						...group,
+						connectors: group.connectors.map((entry) =>
+							entry.id === activeEntry.id
+								? {
+										...entry,
+										channels: [
+											...entry.channels,
+											{
+												id: created.id,
+												name: created.name,
+												displayName: created.displayName,
+												description: created.description,
+												muted: created.muted,
+											},
+										],
+									}
+								: entry,
+						),
+					};
+				});
+			}
+
+			closeModal();
+		} catch (e) {
+			error = e instanceof Error ? e.message : "Не удалось сохранить канал";
+		} finally {
+			saving = false;
+		}
+	}
+
+	async function removeChannel(
+		groupSlug: ChannelGroup["slug"],
+		connectorId: string,
+		channelId: string,
+	) {
+		if (!confirm("Вы уверены, что хотите удалить этот канал?")) return;
+
+		try {
+			error = null;
+			await deleteChannel(channelId);
+			groups = groups.map((group) => {
+				if (group.slug !== groupSlug) return group;
+				return {
+					...group,
+					connectors: group.connectors.map((entry) =>
+						entry.id === connectorId
+							? {
+									...entry,
+									channels: entry.channels.filter((channel) => channel.id !== channelId),
+								}
+							: entry,
+					),
+				};
+			});
+		} catch (e) {
+			error = e instanceof Error ? e.message : "Не удалось удалить канал";
+		}
+	}
+
+	async function toggleMute(
+		groupSlug: ChannelGroup["slug"],
+		connectorId: string,
+		channel: ChannelLink,
+	) {
+		try {
+			error = null;
+			const updated = await updateChannel(channel.id, {
+				name: channel.name,
+				displayName: channel.displayName,
+				description: channel.description,
+				muted: !channel.muted,
+			});
+			groups = groups.map((group) => {
+				if (group.slug !== groupSlug) return group;
+				return {
+					...group,
+					connectors: group.connectors.map((entry) =>
+						entry.id === connectorId
+							? {
+									...entry,
+									channels: entry.channels.map((ch) =>
+										ch.id === channel.id
+											? {
+													id: updated.id,
+													name: updated.name,
+													displayName: updated.displayName,
+													description: updated.description,
+													muted: updated.muted,
+												}
+											: ch,
+									),
+								}
+							: entry,
+					),
+				};
+			});
+		} catch (e) {
+			error = e instanceof Error ? e.message : "Не удалось изменить статус канала";
+		}
+	}
 </script>
 
 <section class="space-y-8 px-4 pb-12 pt-2 md:px-12 md:pt-4">
@@ -203,7 +302,22 @@ function toggleMute(
   </header>
 
   <div class="space-y-6">
-    {#each groups as group (group.slug)}
+    {#if error}
+      <div class="glass-card p-4 bg-red-50 border-red-200">
+        <p class="text-sm text-red-600">{error}</p>
+      </div>
+    {/if}
+
+    {#if loading}
+      <div class="glass-card p-8 text-center">
+        <p class="text-sm text-muted">Загрузка коннекторов...</p>
+      </div>
+    {:else if filteredGroups.length === 0}
+      <div class="glass-card p-8 text-center">
+        <p class="text-sm text-muted">Нет доступных коннекторов</p>
+      </div>
+    {:else}
+      {#each filteredGroups as group (group.slug)}
       <article class="glass-card space-y-6">
         <div class="flex items-center justify-between">
           <div class="space-y-1">
@@ -220,7 +334,7 @@ function toggleMute(
             <div class="rounded-2xl border border-border bg-surfaceMuted/70 p-4 shadow-sm">
               <div class="flex items-start justify-between">
                 <div>
-                  <p class="text-sm font-semibold text-text">{entry.id}</p>
+                  <p class="text-sm font-semibold text-text">{entry.name}</p>
                   {#if entry.comment}
                     <p class="text-xs text-muted">{entry.comment}</p>
                   {/if}
@@ -240,25 +354,43 @@ function toggleMute(
                     <div class="flex flex-col justify-between rounded-2xl border border-border/60 bg-surface p-4 shadow-sm">
                       <div class="flex items-start justify-between gap-3">
                         <div>
-                          <p class="text-sm font-semibold text-text">{channel.name}</p>
+                          <p class="text-sm font-semibold text-text">
+                            {channel.displayName || channel.name}
+                          </p>
+                          {#if channel.displayName}
+                            <p class="mt-0.5 text-xs text-muted font-mono">{channel.name}</p>
+                          {/if}
                           {#if channel.description}
                             <p class="mt-1 text-xs text-muted">{channel.description}</p>
                           {/if}
                         </div>
-                        <button
-                          type="button"
-                          class="icon-btn"
-                          aria-label="Удалить канал"
-                          on:click={() => removeChannel(group.slug, entry.id, channel.name)}
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
-                            <path d="M6 7h12" />
-                            <path d="M10 11v6" />
-                            <path d="M14 11v6" />
-                            <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12" />
-                            <path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" />
-                          </svg>
-                        </button>
+                        <div class="flex items-center gap-2">
+                          <button
+                            type="button"
+                            class="icon-btn"
+                            aria-label="Редактировать канал"
+                            on:click={() => openChannelModal(group, entry, channel)}
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
+                              <path d="M16.862 3.487 20.51 7.136a1.5 1.5 0 0 1 0 2.121l-9.193 9.193-4.593.511a1 1 0 0 1-1.1-1.1l.511-4.593 9.193-9.193a1.5 1.5 0 0 1 2.121 0Z" />
+                              <path d="M19 11.5 12.5 5" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            class="icon-btn"
+                            aria-label="Удалить канал"
+                            on:click={() => removeChannel(group.slug, entry.id, channel.id)}
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
+                              <path d="M6 7h12" />
+                              <path d="M10 11v6" />
+                              <path d="M14 11v6" />
+                              <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12" />
+                              <path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" />
+                            </svg>
+                          </button>
+                        </div>
                       </div>
                       <div class="mt-3 flex items-center justify-between text-xs">
                         {#if channel.muted}
@@ -271,7 +403,7 @@ function toggleMute(
                         <button
                           type="button"
                           class="inline-flex items-center justify-center gap-1 rounded-lg border border-border px-3 py-1 font-semibold text-muted transition hover:border-primary hover:text-primary"
-                          on:click={() => toggleMute(group.slug, entry.id, channel.name)}
+                          on:click={() => toggleMute(group.slug, entry.id, channel)}
                         >
                           {channel.muted ? 'Unmute' : 'Mute'}
                         </button>
@@ -284,7 +416,8 @@ function toggleMute(
           {/each}
         </div>
       </article>
-    {/each}
+      {/each}
+    {/if}
   </div>
 
   {#if channelModalOpen && activeGroup && activeEntry}
@@ -293,7 +426,7 @@ function toggleMute(
       <div class="modal">
         <div class="modal-header">
           <h3 class="text-lg font-semibold text-text">
-            Добавить канал для {activeEntry.id}
+            {editingChannel ? 'Редактировать канал' : 'Добавить канал'} для {activeEntry.name}
           </h3>
           <button type="button" class="modal-close" on:click={closeModal} aria-label="Закрыть">
             ✕
@@ -301,6 +434,18 @@ function toggleMute(
         </div>
 
         <div class="modal-body space-y-4">
+          <div class="space-y-1">
+            <label class="text-sm font-medium text-text" for="channel-name-input">
+              Название <span class="text-xs text-muted">(необязательно)</span>
+            </label>
+            <input
+              id="channel-name-input"
+              class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
+              bind:value={channelNameInput}
+              placeholder="Например: Статус обновлений"
+              autocomplete="off"
+            />
+          </div>
           <div class="space-y-1">
             <label class="text-sm font-medium text-text" for="channel-input">Канал</label>
             <input
@@ -327,9 +472,9 @@ function toggleMute(
             type="button"
             class="btn-primary"
             on:click={saveChannel}
-            disabled={!channelInput.trim()}
+            disabled={!channelInput.trim() || saving}
           >
-            Сохранить
+            {saving ? 'Сохранение...' : editingChannel ? 'Сохранить' : 'Добавить'}
           </button>
         </div>
       </div>
