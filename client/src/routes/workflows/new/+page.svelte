@@ -33,6 +33,7 @@ type CanvasNode = {
 	selectedChannelConnectorId?: string;
 	templateBody?: string;
 	templatePayload?: Record<string, any>;
+	triggerPayload?: Record<string, any>;
 };
 
 type Edge = {
@@ -64,6 +65,12 @@ let editingTemplateNodeId: string | null = null;
 let templateBody = "";
 let templatePayloadJson = "{}";
 let templatePayload: Record<string, any> = {};
+
+// Состояние для редактирования payload триггера
+let triggerPayloadModalOpen = false;
+let editingTriggerNodeId: string | null = null;
+let triggerPayloadJson = "{}";
+let triggerPayload: Record<string, any> = {};
 
 // Базовый payload с предзаполненными переменными (только для фронта)
 const defaultPayload = {
@@ -379,6 +386,66 @@ function addTemplateNode() {
 	nodes = [...nodes, newTemplate];
 }
 
+function openTriggerPayloadEdit(nodeId: string) {
+	editingTriggerNodeId = nodeId;
+	const node = nodes.find(n => n.id === nodeId);
+	if (node && node.triggerPayload && Object.keys(node.triggerPayload).length > 0) {
+		// Используем сохраненный payload из ноды
+		triggerPayload = node.triggerPayload;
+		triggerPayloadJson = JSON.stringify(triggerPayload, null, 2);
+	} else {
+		// Используем базовый payload по умолчанию
+		triggerPayload = { ...defaultPayload };
+		triggerPayloadJson = JSON.stringify(defaultPayload, null, 2);
+	}
+	triggerPayloadModalOpen = true;
+}
+
+function closeTriggerPayloadEdit() {
+	triggerPayloadModalOpen = false;
+	editingTriggerNodeId = null;
+	triggerPayloadJson = "{}";
+	triggerPayload = {};
+}
+
+function saveTriggerPayload() {
+	if (!editingTriggerNodeId) return;
+	
+	try {
+		// Парсим JSON payload
+		const payload = JSON.parse(triggerPayloadJson);
+		
+		nodes = nodes.map((node) => {
+			if (node.id === editingTriggerNodeId) {
+				return {
+					...node,
+					triggerPayload: payload,
+				};
+			}
+			return node;
+		});
+		
+		closeTriggerPayloadEdit();
+	} catch (e) {
+		error = "Неверный формат JSON в payload";
+		console.error("Invalid JSON:", e);
+	}
+}
+
+// Реактивно обновляем triggerPayload при изменении triggerPayloadJson
+$: {
+	try {
+		if (triggerPayloadJson && triggerPayloadJson.trim()) {
+			triggerPayload = JSON.parse(triggerPayloadJson);
+		} else {
+			triggerPayload = {};
+		}
+	} catch (e) {
+		// Игнорируем ошибки парсинга во время ввода
+		triggerPayload = {};
+	}
+}
+
 function deleteNode(nodeId: string, event: MouseEvent) {
 	event.stopPropagation();
 
@@ -520,6 +587,9 @@ $: tempPath = (() => {
 							templateBody: config.templateBody || "",
 							templatePayload: config.templatePayload || {},
 						} : {}),
+						...(variant === "trigger" && config?.triggerPayload ? {
+							triggerPayload: config.triggerPayload || {},
+						} : {}),
 					};
 				});
 				
@@ -584,6 +654,9 @@ $: tempPath = (() => {
 						...(node.variant === "template" && (node.templateBody || node.templatePayload) ? {
 							templateBody: node.templateBody,
 							templatePayload: node.templatePayload,
+						} : {}),
+						...(node.variant === "trigger" && node.triggerPayload ? {
+							triggerPayload: node.triggerPayload,
 						} : {}),
 					},
 				})),
@@ -904,6 +977,30 @@ $: tempPath = (() => {
 							</svg>
 						</button>
 					{/if}
+					{#if node.variant === 'trigger' && node.label === 'Manual'}
+						<button
+							type="button"
+							class="edit-channel-btn"
+							aria-label="Редактировать payload"
+							title="Редактировать payload"
+							on:click={(e) => {
+								e.stopPropagation();
+								openTriggerPayloadEdit(node.id);
+							}}
+						>
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.5"
+								class="h-4 w-4"
+							>
+								<path d="M16.862 3.487 20.51 7.136a1.5 1.5 0 0 1 0 2.121l-9.193 9.193-4.593.511a1 1 0 0 1-1.1-1.1l.511-4.593 9.193-9.193a1.5 1.5 0 0 1 2.121 0Z" />
+								<path d="M19 11.5 12.5 5" />
+							</svg>
+						</button>
+					{/if}
 					<span class="node-label">
 						{#if node.variant === 'channel' && node.selectedChannelConnectorId}
 							{@const connectorType = getConnectorType(node.selectedChannelConnectorId)}
@@ -1043,6 +1140,41 @@ $: tempPath = (() => {
 						{/each}
 					</div>
 				{/if}
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Модальное окно редактирования payload триггера -->
+{#if triggerPayloadModalOpen}
+	<div class="modal-overlay" on:click={closeTriggerPayloadEdit} on:keydown={(e) => e.key === 'Escape' && closeTriggerPayloadEdit()}>
+		<div class="modal-content" on:click|stopPropagation>
+			<div class="modal-header">
+				<h2 class="modal-title">Редактировать payload</h2>
+				<button
+					type="button"
+					class="modal-close"
+					on:click={closeTriggerPayloadEdit}
+					aria-label="Закрыть"
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-5 w-5">
+						<line x1="18" y1="6" x2="6" y2="18" />
+						<line x1="6" y1="6" x2="18" y2="18" />
+					</svg>
+				</button>
+			</div>
+			<div class="modal-body">
+				<textarea
+					class="template-editor"
+					bind:value={triggerPayloadJson}
+					placeholder={`{"key": "value"}`}
+					spellcheck="false"
+					style="min-height: 300px; width: 100%; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace; font-size: 0.875rem; line-height: 1.5; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 0.5rem; padding: 1rem; background: rgba(248, 250, 252, 0.5); color: #1e293b; resize: vertical;"
+				></textarea>
+			</div>
+			<div class="template-modal-footer">
+				<button type="button" class="btn-secondary" on:click={closeTriggerPayloadEdit}>Отменить</button>
+				<button type="button" class="btn-primary" on:click={saveTriggerPayload}>Сохранить</button>
 			</div>
 		</div>
 	</div>
