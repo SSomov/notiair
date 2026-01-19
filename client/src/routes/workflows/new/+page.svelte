@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { draggable } from "@neodrag/svelte";
 	import type { DragEventData } from "@neodrag/svelte";
-	import { onMount } from "svelte";
+	import { onMount, tick } from "svelte";
 	import { page } from "$app/stores";
 	import { saveWorkflow, getWorkflow } from "$lib/api";
 	import type { WorkflowDraft } from "$lib/types/workflow";
@@ -323,12 +323,21 @@ $: tempPath = (() => {
 					position: node.position || { x: 0, y: 0 },
 				}));
 				
+				// Ждем, пока nodes отрендерятся, перед загрузкой edges
+				await tick();
+				// Дополнительная задержка для гарантии рендера
+				await new Promise(resolve => setTimeout(resolve, 100));
+				
 				// Преобразуем edges из API формата в Edge
 				edges = (workflow.edges || []).map((edge, index) => ({
-					id: `edge-${index}`,
+					id: `${edge.from}-${edge.to}-${index}`,
 					from: { nodeId: edge.from, port: "right" as PortType },
 					to: { nodeId: edge.to, port: "left" as PortType },
 				}));
+				
+				// Принудительно обновляем реактивность
+				edges = [...edges];
+				nodes = [...nodes];
 			} catch (e) {
 				error = e instanceof Error ? e.message : "Не удалось загрузить workflow";
 			} finally {
@@ -343,6 +352,14 @@ $: tempPath = (() => {
 		try {
 			saving = true;
 			error = null;
+
+			// Преобразуем edges, убеждаясь что они валидны
+			const edgesData = edges
+				.filter((edge) => edge.from?.nodeId && edge.to?.nodeId)
+				.map((edge) => ({
+					from: edge.from.nodeId,
+					to: edge.to.nodeId,
+				}));
 
 			const workflowData = {
 				id: workflowId || crypto.randomUUID(),
@@ -361,10 +378,7 @@ $: tempPath = (() => {
 						variant: node.variant,
 					},
 				})),
-				edges: edges.map((edge) => ({
-					from: edge.from.nodeId,
-					to: edge.to.nodeId,
-				})),
+				edges: edgesData,
 				filters: {},
 				isActive: isActive,
 			};
