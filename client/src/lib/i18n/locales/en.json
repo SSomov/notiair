@@ -6,7 +6,6 @@
 		"ms": "ms",
 		"dashboard": "dashboard",
 		"workflows": "workflows",
-		"templates": "templates",
 		"queues": "queues",
 		"channels": "channels",
 		"connectors": "connectors"
@@ -14,7 +13,8 @@
 	"header": {
 		"title": "NotiAir",
 		"subtitle": "Notification Service",
-		"openSettings": "Open settings"
+		"openSettings": "Open settings",
+		"settingsApiKeys": "Api keys"
 	},
 	"dashboard": {
 		"description": "Basic overview of service activity: processed events, latency, and workflow distribution across channels.",
@@ -34,7 +34,6 @@
 	},
 	"workflows": {
 		"description": "Build automations from triggers, filters, and actions. Manage versions, create drafts, and reusable blocks for teams.",
-		"goToTemplates": "Go to templates",
 		"newWorkflow": "New workflow",
 		"activeScenarios": {
 			"title": "Active Scenarios",
@@ -55,10 +54,14 @@
 			"createDraftDescription": "Copy an existing scenario or start from scratch"
 		}
 	},
-	"templates": {
-		"title": "Template Studio",
-		"description": "Create Telegram templates with variables and preview.",
-		"newTemplate": "New template"
+	"apiKeys": {
+		"title": "Api keys",
+		"description": "Generate API keys for authenticating requests. Save the key after generation — it will not be shown again.",
+		"generate": "Generate key",
+		"copy": "Copy",
+		"copied": "Copied",
+		"placeholder": "Key will appear here after generation",
+		"warning": "Save the key now. It will not be displayed again after you leave or generate a new one."
 	},
 	"queues": {
 		"title": "Queue Monitor",

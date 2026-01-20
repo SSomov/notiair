@@ -1,26 +1,7 @@
 import type { QueueItem } from "$lib/types/queue";
-import type { TemplateDraft } from "$lib/types/template";
 import type { WorkflowDraft } from "$lib/types/workflow";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api/v1";
-
-export async function listTemplates(): Promise<TemplateDraft[]> {
-	const res = await fetch(`${API_URL}/templates`);
-	if (!res.ok) throw new Error("Не удалось загрузить шаблоны");
-	return res.json();
-}
-
-export async function saveTemplate(
-	payload: TemplateDraft,
-): Promise<TemplateDraft> {
-	const res = await fetch(`${API_URL}/templates`, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(payload),
-	});
-	if (!res.ok) throw new Error("Не удалось сохранить шаблон");
-	return res.json();
-}
 
 export async function listWorkflows(): Promise<WorkflowDraft[]> {
 	const res = await fetch(`${API_URL}/workflows`);

@@ -73,7 +73,6 @@
 			</p>
 		</div>
 		<div class="flex flex-wrap gap-3">
-			<a href="/templates" class="btn-primary">{$t('workflows.goToTemplates')}</a>
 			<a
 				href="/workflows/new"
 				class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm">{$t('workflows.newWorkflow')}</a

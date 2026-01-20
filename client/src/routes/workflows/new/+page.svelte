@@ -3,7 +3,7 @@
 	import type { DragEventData } from "@neodrag/svelte";
 	import { onMount, tick } from "svelte";
 	import { page } from "$app/stores";
-	import { saveWorkflow, getWorkflow, listTelegramTokens, listChannels, type Channel, type TelegramToken } from "$lib/api";
+	import { saveWorkflow, getWorkflow, listTelegramTokens, listChannels, dispatchNotification, type Channel, type TelegramToken } from "$lib/api";
 	import type { WorkflowDraft } from "$lib/types/workflow";
 	import TelegramIcon from "$lib/components/TelegramIcon.svelte";
 
@@ -71,6 +71,9 @@ let triggerPayloadModalOpen = false;
 let editingTriggerNodeId: string | null = null;
 let triggerPayloadJson = "{}";
 let triggerPayload: Record<string, any> = {};
+
+// Состояние для кнопки Play у Manual триггера
+let playingManualNodeId: string | null = null;
 
 // Базовый payload с предзаполненными переменными (только для фронта)
 const defaultPayload = {
@@ -432,6 +435,39 @@ function saveTriggerPayload() {
 	}
 }
 
+async function runManualTrigger(nodeId: string) {
+	const node = nodes.find((n) => n.id === nodeId);
+	if (!node || node.triggerPayload === undefined) return;
+	if (!workflowId) {
+		error = "Сначала сохраните workflow";
+		return;
+	}
+	const templateNode = nodes.find((n) => n.variant === "template");
+	if (!templateNode) {
+		error = "Добавьте шаблон в граф";
+		return;
+	}
+	const payload = node.triggerPayload || {};
+	const variables: Record<string, string> = {};
+	for (const [k, v] of Object.entries(payload)) {
+		variables[k] = v == null ? "" : String(v);
+	}
+	playingManualNodeId = nodeId;
+	error = null;
+	try {
+		await dispatchNotification({
+			workflowId,
+			templateId: templateNode.id,
+			variables,
+			payload: payload as Record<string, unknown>,
+		});
+	} catch (e) {
+		error = e instanceof Error ? e.message : "Не удалось запустить";
+	} finally {
+		playingManualNodeId = null;
+	}
+}
+
 // Реактивно обновляем triggerPayload при изменении triggerPayloadJson
 $: {
 	try {
@@ -780,7 +816,6 @@ $: tempPath = (() => {
 				>
 					Добавить канал
 				</button>
-				<button type="button" class="btn-primary">Запустить тест</button>
 				<button
 					type="button"
 					class="btn-primary bg-accent text-white shadow-sm hover:shadow-md"
@@ -978,28 +1013,50 @@ $: tempPath = (() => {
 						</button>
 					{/if}
 					{#if node.variant === 'trigger' && node.label === 'Manual'}
-						<button
-							type="button"
-							class="edit-channel-btn"
-							aria-label="Редактировать payload"
-							title="Редактировать payload"
-							on:click={(e) => {
-								e.stopPropagation();
-								openTriggerPayloadEdit(node.id);
-							}}
-						>
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="1.5"
-								class="h-4 w-4"
+						<div class="manual-trigger-actions">
+							<button
+								type="button"
+								class="node-action-btn"
+								aria-label="Запустить"
+								title="Запустить"
+								disabled={playingManualNodeId === node.id}
+								on:click={(e) => {
+									e.stopPropagation();
+									runManualTrigger(node.id);
+								}}
 							>
-								<path d="M16.862 3.487 20.51 7.136a1.5 1.5 0 0 1 0 2.121l-9.193 9.193-4.593.511a1 1 0 0 1-1.1-1.1l.511-4.593 9.193-9.193a1.5 1.5 0 0 1 2.121 0Z" />
-								<path d="M19 11.5 12.5 5" />
-							</svg>
-						</button>
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									viewBox="0 0 24 24"
+									fill="currentColor"
+									class="h-4 w-4"
+								>
+									<path d="M8 5v14l11-7z" />
+								</svg>
+							</button>
+							<button
+								type="button"
+								class="node-action-btn"
+								aria-label="Редактировать payload"
+								title="Редактировать payload"
+								on:click={(e) => {
+									e.stopPropagation();
+									openTriggerPayloadEdit(node.id);
+								}}
+							>
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.5"
+									class="h-4 w-4"
+								>
+									<path d="M16.862 3.487 20.51 7.136a1.5 1.5 0 0 1 0 2.121l-9.193 9.193-4.593.511a1 1 0 0 1-1.1-1.1l.511-4.593 9.193-9.193a1.5 1.5 0 0 1 2.121 0Z" />
+									<path d="M19 11.5 12.5 5" />
+								</svg>
+							</button>
+						</div>
 					{/if}
 					<span class="node-label">
 						{#if node.variant === 'channel' && node.selectedChannelConnectorId}
@@ -1445,6 +1502,43 @@ $: tempPath = (() => {
 		border-color: rgba(37, 99, 235, 0.5);
 		background: rgba(37, 99, 235, 0.1);
 		transform: translateY(-1px);
+	}
+
+	.manual-trigger-actions {
+		position: absolute;
+		top: 0.75rem;
+		right: 4rem;
+		display: flex;
+		gap: 0.5rem;
+		z-index: 10;
+		pointer-events: all;
+	}
+
+	.node-action-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		border-radius: 999px;
+		border: 1px solid rgba(148, 163, 184, 0.3);
+		background: #fff;
+		color: #64748b;
+		box-shadow: 0 6px 16px -12px rgba(15, 23, 42, 0.4);
+		transition: 120ms ease;
+		cursor: pointer;
+	}
+
+	.node-action-btn:hover:not(:disabled) {
+		color: #2563eb;
+		border-color: rgba(37, 99, 235, 0.5);
+		background: rgba(37, 99, 235, 0.1);
+		transform: translateY(-1px);
+	}
+
+	.node-action-btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
 	}
 
 	.edit-template-btn {
