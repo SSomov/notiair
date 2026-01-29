@@ -7,7 +7,16 @@
 	import type { WorkflowDraft } from "$lib/types/workflow";
 	import TelegramIcon from "$lib/components/TelegramIcon.svelte";
 
-	const triggerOptions = ["API", "Cron", "Manual"];
+	type TriggerOption = {
+		name: string;
+		disabled?: boolean;
+	};
+
+	const triggerOptions: TriggerOption[] = [
+		{ name: "API", disabled: true },
+		{ name: "Stream broker" },
+		{ name: "Manual" },
+	];
 	let triggerMenuOpen = false;
 	let selectedTrigger = "Добавить триггер";
 
@@ -34,6 +43,7 @@ type CanvasNode = {
 	templateBody?: string;
 	templatePayload?: Record<string, any>;
 	triggerPayload?: Record<string, any>;
+	eventTypes?: string[];
 };
 
 type Edge = {
@@ -65,6 +75,7 @@ let editingTemplateNodeId: string | null = null;
 let templateBody = "";
 let templatePayloadJson = "{}";
 let templatePayload: Record<string, any> = {};
+let templatePayloadError: string | null = null;
 
 // Состояние для редактирования payload триггера
 let triggerPayloadModalOpen = false;
@@ -74,6 +85,22 @@ let triggerPayload: Record<string, any> = {};
 
 // Состояние для кнопки Play у Manual триггера
 let playingManualNodeId: string | null = null;
+
+// Состояние для редактирования event_types Stream broker
+let eventTypesModalOpen = false;
+let editingStreamBrokerNodeId: string | null = null;
+let selectedEventTypes: string[] = [];
+let newEventType = "";
+const availableEventTypes = [
+	"user.registered",
+	"user.login",
+	"user.logout",
+	"user.profile.updated",
+	"user.password.changed",
+	"user.email.verified",
+	"user.suspended",
+	"user.deleted",
+];
 
 // Базовый payload с предзаполненными переменными (только для фронта)
 const defaultPayload = {
@@ -93,16 +120,18 @@ function getConnectorType(connectorId: string | undefined): "telegram" | "slack"
 	return "telegram";
 }
 
-function selectTrigger(option: string) {
-	selectedTrigger = option;
+function selectTrigger(option: TriggerOption) {
+	if (option.disabled) return; // Не создаем неактивные триггеры
+	
+	selectedTrigger = option.name;
 	triggerMenuOpen = false;
 	
 	// Создаем новую ноду триггера с выбранным типом
 	const triggerCount = nodes.filter((n) => n.variant === "trigger").length;
 	const newTrigger: CanvasNode = {
 		id: generateNodeId("trigger"),
-		label: option,
-		description: option,
+		label: option.name,
+		description: option.name,
 		variant: "trigger",
 		position: { x: 100 + triggerCount * 300, y: 100 + triggerCount * 100 },
 	};
@@ -320,6 +349,58 @@ function closeTemplateEdit() {
 	templateBody = "";
 	templatePayloadJson = "{}";
 	templatePayload = {};
+	templatePayloadError = null;
+}
+
+function updatePayloadFromTrigger() {
+	// Находим триггер, связанный с текущим шаблоном через edges
+	const templateNodeId = editingTemplateNodeId;
+	if (!templateNodeId) return;
+	
+	// Ищем все edges, которые ведут к этому шаблону
+	const incomingEdges = edges.filter(edge => edge.to.nodeId === templateNodeId);
+	
+	let triggerNode: CanvasNode | undefined;
+	
+	if (incomingEdges.length > 0) {
+		// Если есть связи, сначала ищем Manual триггер
+		for (const edge of incomingEdges) {
+			const node = nodes.find(n => n.id === edge.from.nodeId && n.variant === "trigger" && n.label === "Manual");
+			if (node && node.triggerPayload && Object.keys(node.triggerPayload).length > 0) {
+				triggerNode = node;
+				break;
+			}
+		}
+		
+		// Если Manual не найден, берем первый связанный триггер
+		if (!triggerNode) {
+			for (const edge of incomingEdges) {
+				const node = nodes.find(n => n.id === edge.from.nodeId && n.variant === "trigger");
+				if (node && node.triggerPayload && Object.keys(node.triggerPayload).length > 0) {
+					triggerNode = node;
+					break;
+				}
+			}
+		}
+	}
+	
+	// Если нет прямых связей, ищем Manual триггер в workflow
+	if (!triggerNode) {
+		triggerNode = nodes.find(n => n.variant === "trigger" && n.label === "Manual" && n.triggerPayload && Object.keys(n.triggerPayload).length > 0);
+	}
+	
+	// Если Manual не найден, берем первый триггер с payload
+	if (!triggerNode) {
+		triggerNode = nodes.find(n => n.variant === "trigger" && n.triggerPayload && Object.keys(n.triggerPayload).length > 0);
+	}
+	
+	if (triggerNode && triggerNode.triggerPayload) {
+		templatePayload = { ...triggerNode.triggerPayload };
+		templatePayloadJson = JSON.stringify(triggerNode.triggerPayload, null, 2);
+		error = null;
+	} else {
+		error = "Не найден триггер с payload";
+	}
 }
 
 function saveTemplate() {
@@ -409,6 +490,55 @@ function closeTriggerPayloadEdit() {
 	editingTriggerNodeId = null;
 	triggerPayloadJson = "{}";
 	triggerPayload = {};
+}
+
+function openEventTypesEdit(nodeId: string) {
+	editingStreamBrokerNodeId = nodeId;
+	const node = nodes.find(n => n.id === nodeId);
+	selectedEventTypes = node?.eventTypes ? [...node.eventTypes] : [];
+	newEventType = "";
+	eventTypesModalOpen = true;
+}
+
+function closeEventTypesEdit() {
+	eventTypesModalOpen = false;
+	editingStreamBrokerNodeId = null;
+	selectedEventTypes = [];
+	newEventType = "";
+}
+
+function toggleEventType(eventType: string) {
+	if (selectedEventTypes.includes(eventType)) {
+		selectedEventTypes = selectedEventTypes.filter(et => et !== eventType);
+	} else {
+		selectedEventTypes = [...selectedEventTypes, eventType];
+	}
+}
+
+function addNewEventType() {
+	if (newEventType.trim() && !selectedEventTypes.includes(newEventType.trim())) {
+		selectedEventTypes = [...selectedEventTypes, newEventType.trim()];
+		newEventType = "";
+	}
+}
+
+function saveEventTypes() {
+	if (!editingStreamBrokerNodeId) return;
+	
+	nodes = nodes.map((node) => {
+		if (node.id === editingStreamBrokerNodeId) {
+			return {
+				...node,
+				eventTypes: [...selectedEventTypes],
+				description: selectedEventTypes.length > 0 
+					? `Event types: ${selectedEventTypes.join(", ")}`
+					: "Stream broker",
+			};
+		}
+		return node;
+	});
+	
+	closeEventTypesEdit();
 }
 
 function saveTriggerPayload() {
@@ -626,6 +756,9 @@ $: tempPath = (() => {
 						...(variant === "trigger" && config?.triggerPayload ? {
 							triggerPayload: config.triggerPayload || {},
 						} : {}),
+						...(variant === "trigger" && config?.eventTypes ? {
+							eventTypes: config.eventTypes || [],
+						} : {}),
 					};
 				});
 				
@@ -693,6 +826,9 @@ $: tempPath = (() => {
 						} : {}),
 						...(node.variant === "trigger" && node.triggerPayload ? {
 							triggerPayload: node.triggerPayload,
+						} : {}),
+						...(node.variant === "trigger" && node.eventTypes ? {
+							eventTypes: node.eventTypes,
 						} : {}),
 					},
 				})),
@@ -786,17 +922,18 @@ $: tempPath = (() => {
 					<ul
 						class="absolute z-10 mt-2 w-48 overflow-hidden rounded-xl border border-border bg-surface shadow-lg"
 					>
-						{#each triggerOptions as option}
-							<li>
-								<button
-									type="button"
-									class="block w-full px-4 py-2 text-left text-sm text-text hover:bg-surfaceMuted"
-									on:click={() => selectTrigger(option)}
-								>
-									{option}
-								</button>
-							</li>
-						{/each}
+					{#each triggerOptions as option}
+						<li>
+							<button
+								type="button"
+								class="block w-full px-4 py-2 text-left text-sm text-text hover:bg-surfaceMuted disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+								on:click={() => selectTrigger(option)}
+								disabled={option.disabled}
+							>
+								{option.name}
+							</button>
+						</li>
+					{/each}
 					</ul>
 				{/if}
 			</div>
@@ -1012,6 +1149,30 @@ $: tempPath = (() => {
 							</svg>
 						</button>
 					{/if}
+					{#if node.variant === 'trigger' && node.label === 'Stream broker'}
+						<button
+							type="button"
+							class="edit-channel-btn"
+							aria-label="Редактировать event types"
+							title="Редактировать event types"
+							on:click={(e) => {
+								e.stopPropagation();
+								openEventTypesEdit(node.id);
+							}}
+						>
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.5"
+								class="h-4 w-4"
+							>
+								<path d="M16.862 3.487 20.51 7.136a1.5 1.5 0 0 1 0 2.121l-9.193 9.193-4.593.511a1 1 0 0 1-1.1-1.1l.511-4.593 9.193-9.193a1.5 1.5 0 0 1 2.121 0Z" />
+								<path d="M19 11.5 12.5 5" />
+							</svg>
+						</button>
+					{/if}
 					{#if node.variant === 'trigger' && node.label === 'Manual'}
 						<div class="manual-trigger-actions">
 							<button
@@ -1105,8 +1266,21 @@ $: tempPath = (() => {
 				<div class="template-panel">
 					<div class="template-panel-header">
 						<h3 class="template-panel-title">Payload</h3>
+						<button
+							type="button"
+							class="btn-secondary text-xs px-2 py-1"
+							on:click={updatePayloadFromTrigger}
+							title="Обновить payload из триггера"
+						>
+							Обновить из триггера
+						</button>
 					</div>
 					<div class="template-panel-content">
+						{#if templatePayloadError}
+							<div class="mb-2 p-2 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
+								{templatePayloadError}
+							</div>
+						{/if}
 						<textarea
 							class="template-editor"
 							bind:value={templatePayloadJson}
@@ -1232,6 +1406,95 @@ $: tempPath = (() => {
 			<div class="template-modal-footer">
 				<button type="button" class="btn-secondary" on:click={closeTriggerPayloadEdit}>Отменить</button>
 				<button type="button" class="btn-primary" on:click={saveTriggerPayload}>Сохранить</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Модальное окно редактирования event types для Stream broker -->
+{#if eventTypesModalOpen}
+	<div class="modal-overlay" on:click={closeEventTypesEdit} on:keydown={(e) => e.key === 'Escape' && closeEventTypesEdit()}>
+		<div class="modal-content" on:click|stopPropagation>
+			<div class="modal-header">
+				<h2 class="modal-title">Выберите event types</h2>
+				<button
+					type="button"
+					class="modal-close"
+					on:click={closeEventTypesEdit}
+					aria-label="Закрыть"
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-5 w-5">
+						<line x1="18" y1="6" x2="6" y2="18" />
+						<line x1="6" y1="6" x2="18" y2="18" />
+					</svg>
+				</button>
+			</div>
+			<div class="modal-body">
+				<!-- Список доступных event types -->
+				<div class="mb-4">
+					<h3 class="text-sm font-medium mb-2">Доступные event types:</h3>
+					<div class="space-y-2 max-h-60 overflow-y-auto">
+						{#each availableEventTypes as eventType}
+							<label class="flex items-center gap-2 p-2 rounded hover:bg-surfaceMuted cursor-pointer">
+								<input
+									type="checkbox"
+									checked={selectedEventTypes.includes(eventType)}
+									on:change={() => toggleEventType(eventType)}
+									class="w-4 h-4"
+								/>
+								<span class="text-sm">{eventType}</span>
+							</label>
+						{/each}
+					</div>
+				</div>
+				
+				<!-- Добавление нового event type -->
+				<div class="border-t pt-4">
+					<h3 class="text-sm font-medium mb-2">Добавить новый event type:</h3>
+					<div class="flex gap-2">
+						<input
+							type="text"
+							bind:value={newEventType}
+							placeholder="user.custom.event"
+							class="flex-1 px-3 py-2 border border-border rounded-md text-sm"
+							on:keydown={(e) => e.key === 'Enter' && addNewEventType()}
+						/>
+						<button
+							type="button"
+							class="btn-primary px-4 py-2 text-sm"
+							on:click={addNewEventType}
+							disabled={!newEventType.trim()}
+						>
+							Add
+						</button>
+					</div>
+				</div>
+				
+				<!-- Выбранные event types -->
+				{#if selectedEventTypes.length > 0}
+					<div class="mt-4 border-t pt-4">
+						<h3 class="text-sm font-medium mb-2">Выбранные event types ({selectedEventTypes.length}):</h3>
+						<div class="flex flex-wrap gap-2">
+							{#each selectedEventTypes as eventType}
+								<span class="inline-flex items-center gap-1 px-2 py-1 bg-accent/10 text-accent rounded-md text-xs">
+									{eventType}
+									<button
+										type="button"
+										class="ml-1 hover:text-accent/70"
+										on:click={() => toggleEventType(eventType)}
+										aria-label="Удалить"
+									>
+										×
+									</button>
+								</span>
+							{/each}
+						</div>
+					</div>
+				{/if}
+			</div>
+			<div class="template-modal-footer">
+				<button type="button" class="btn-secondary" on:click={closeEventTypesEdit}>Отменить</button>
+				<button type="button" class="btn-primary" on:click={saveEventTypes}>Сохранить</button>
 			</div>
 		</div>
 	</div>
