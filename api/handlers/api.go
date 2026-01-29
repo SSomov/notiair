@@ -2,12 +2,15 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/websocket/v2"
 
 	"notiair/internal/persistence/channel"
 	"notiair/internal/persistence/serviceconfig"
 	"notiair/internal/routing"
+	"notiair/internal/stream"
 	"notiair/internal/templates"
 	"notiair/internal/workflow"
 	"notiair/services"
@@ -48,6 +51,18 @@ type ChannelRepository interface {
 	Delete(ctx context.Context, id string) error
 }
 
+type StreamService interface {
+	GetRecentMessages(eventTypes []string, limit int) ([]stream.Event, error)
+}
+
+type streamService struct {
+	redisStore *stream.RedisStore
+}
+
+func (s *streamService) GetRecentMessages(eventTypes []string, limit int) ([]stream.Event, error) {
+	return stream.GetRecentMessages(s.redisStore, eventTypes, limit)
+}
+
 type API struct {
 	notifications NotificationService
 	templates     TemplateRepository
@@ -55,9 +70,18 @@ type API struct {
 	queue         QueueInspector
 	serviceConfig ServiceConfigRepository
 	channels      ChannelRepository
+	stream        StreamService
+	streamConfig  StreamConfig
+	streamHub     *stream.Hub
+	redisStore    *stream.RedisStore
 }
 
-func NewAPI(notificationSvc NotificationService, tplRepo TemplateRepository, wfRepo WorkflowRepository, queueInspector QueueInspector, serviceConfigRepo ServiceConfigRepository, channelRepo ChannelRepository) *API {
+type StreamConfig struct {
+	Brokers []string
+	Topic   string
+}
+
+func NewAPI(notificationSvc NotificationService, tplRepo TemplateRepository, wfRepo WorkflowRepository, queueInspector QueueInspector, serviceConfigRepo ServiceConfigRepository, channelRepo ChannelRepository, streamConfig StreamConfig, streamHub *stream.Hub, redisStore *stream.RedisStore) *API {
 	return &API{
 		notifications: notificationSvc,
 		templates:     tplRepo,
@@ -65,6 +89,10 @@ func NewAPI(notificationSvc NotificationService, tplRepo TemplateRepository, wfR
 		queue:         queueInspector,
 		serviceConfig: serviceConfigRepo,
 		channels:      channelRepo,
+		stream:        &streamService{redisStore: redisStore},
+		streamConfig:  streamConfig,
+		streamHub:     streamHub,
+		redisStore:    redisStore,
 	}
 }
 
@@ -521,4 +549,66 @@ func (a *API) DeleteChannel(c *fiber.Ctx) error {
 	}
 
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+type streamMessagesRequest struct {
+	EventTypes []string `json:"eventTypes"`
+	Limit      int      `json:"limit"`
+}
+
+func (a *API) GetStreamMessages(c *fiber.Ctx) error {
+	var req streamMessagesRequest
+	if err := c.QueryParser(&req); err != nil {
+		req = streamMessagesRequest{
+			EventTypes: []string{},
+			Limit:      10,
+		}
+	}
+
+	if req.Limit <= 0 || req.Limit > 100 {
+		req.Limit = 10
+	}
+
+	events, err := a.stream.GetRecentMessages(
+		req.EventTypes,
+		req.Limit,
+	)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+
+	return c.JSON(events)
+}
+
+// StreamWebSocket обрабатывает WebSocket соединения для получения событий в реальном времени
+func (a *API) StreamWebSocket(c *websocket.Conn) {
+	// Получаем event types из query параметров
+	eventTypesStr := c.Query("eventTypes")
+	var eventTypes []string
+	if eventTypesStr != "" {
+		// Пробуем распарсить как JSON массив
+		if err := json.Unmarshal([]byte(eventTypesStr), &eventTypes); err != nil {
+			// Если не JSON, пробуем как простой список через запятую
+			eventTypes = []string{eventTypesStr}
+		}
+	}
+
+	// Регистрируем клиента в hub
+	if a.streamHub != nil {
+		a.streamHub.RegisterClient(c, eventTypes)
+		defer a.streamHub.UnregisterClient(c)
+	}
+
+	// Обрабатываем входящие сообщения (для ping/pong и закрытия соединения)
+	for {
+		_, msg, err := c.ReadMessage()
+		if err != nil {
+			break
+		}
+
+		// Эхо для ping/pong
+		if err := c.WriteMessage(websocket.TextMessage, msg); err != nil {
+			break
+		}
+	}
 }

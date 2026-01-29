@@ -2,6 +2,7 @@ package routes
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/websocket/v2"
 
 	"notiair/handlers"
 )
@@ -32,4 +33,8 @@ func (a *API) Register(router fiber.Router) {
 	router.Post("/connectors/:connectorId/channels", a.handlers.CreateChannel)
 	router.Put("/channels/:id", a.handlers.UpdateChannel)
 	router.Delete("/channels/:id", a.handlers.DeleteChannel)
+	router.Get("/stream/messages", a.handlers.GetStreamMessages)
+	
+	// WebSocket endpoint для получения событий в реальном времени
+	router.Get("/stream/ws", websocket.New(a.handlers.StreamWebSocket))
 }

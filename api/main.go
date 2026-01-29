@@ -23,6 +23,7 @@ import (
 	workflowpersistence "notiair/internal/persistence/workflow"
 	"notiair/internal/queue"
 	"notiair/internal/routing"
+	"notiair/internal/stream"
 	"notiair/internal/templates"
 	"notiair/internal/workflow"
 	"notiair/routes"
@@ -34,6 +35,9 @@ var (
 	dbConn            *gorm.DB
 	queueClient       queue.Client
 	serviceConfigRepo serviceconfig.Repository
+	streamConsumer    *stream.Consumer
+	streamHub         *stream.Hub
+	redisStore        *stream.RedisStore
 )
 
 func initConfig() {
@@ -88,7 +92,28 @@ func buildApplication() *fiber.App {
 	notificationService := services.NewNotificationService(routerSvc, queueClient, outboxRepo)
 	queueInspector := queue.NewNoopInspector()
 	channelRepo := channel.NewRepository(dbConn)
-	apiHandlers := handlers.NewAPI(notificationService, templateRepo, workflowRepo, queueInspector, serviceConfigRepo, channelRepo)
+	streamConfig := handlers.StreamConfig{
+		Brokers: appConfig.Stream.Brokers,
+		Topic:   appConfig.Stream.Topic,
+	}
+	
+	// Создаем Redis store для хранения сообщений
+	if redisStore == nil {
+		var err error
+		redisStore, err = stream.NewRedisStore(appConfig.Redis.URL)
+		if err != nil {
+			log.Printf("failed to create redis store: %v", err)
+			// Продолжаем работу без Redis, но функциональность будет ограничена
+		}
+	}
+	
+	// Создаем и запускаем WebSocket hub
+	if streamHub == nil {
+		streamHub = stream.NewHub(redisStore)
+		go streamHub.Run()
+	}
+	
+	apiHandlers := handlers.NewAPI(notificationService, templateRepo, workflowRepo, queueInspector, serviceConfigRepo, channelRepo, streamConfig, streamHub, redisStore)
 
 	app := fiber.New(fiber.Config{
 		AppName:      "NotiAir Notification API",
@@ -111,9 +136,61 @@ func buildApplication() *fiber.App {
 	return app
 }
 
+func initStreamConsumer() error {
+	workflowPersistenceRepo := workflowpersistence.NewRepository(dbConn)
+	workflowRepo := workflow.NewDBRepository(workflowPersistenceRepo)
+	routerSvc := routing.NewService(workflowRepo)
+	outboxRepo := outbox.NewRepository(dbConn)
+	notificationService := services.NewNotificationService(routerSvc, queueClient, outboxRepo)
+
+	// Создаем Redis store если еще не создан
+	if redisStore == nil {
+		var err error
+		redisStore, err = stream.NewRedisStore(appConfig.Redis.URL)
+		if err != nil {
+			log.Printf("failed to create redis store: %v", err)
+			// Продолжаем работу без Redis
+		}
+	}
+
+	// Создаем hub если еще не создан
+	if streamHub == nil {
+		streamHub = stream.NewHub(redisStore)
+		go streamHub.Run()
+	}
+
+	var err error
+	streamConsumer, err = stream.NewConsumer(
+		appConfig.Stream.Brokers,
+		appConfig.Stream.Topic,
+		appConfig.Stream.GroupID,
+		workflowRepo,
+		notificationService,
+		streamHub,
+		redisStore,
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func runServer(app *fiber.App) {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// Запускаем stream consumer
+	if streamConsumer != nil {
+		if err := streamConsumer.Start(ctx); err != nil {
+			log.Fatalf("failed to start stream consumer: %v", err)
+		}
+		defer func() {
+			if err := streamConsumer.Stop(); err != nil {
+				log.Printf("failed to stop stream consumer: %v", err)
+			}
+		}()
+	}
 
 	go func() {
 		log.Printf("server starting on %s", appConfig.HTTP.Addr)
@@ -147,6 +224,10 @@ func main() {
 	initDatabase()
 	initQueue()
 	defer queueClient.Close()
+
+	if err := initStreamConsumer(); err != nil {
+		log.Fatalf("failed to init stream consumer: %v", err)
+	}
 
 	app := buildApplication()
 	runServer(app)

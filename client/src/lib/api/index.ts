@@ -162,3 +162,23 @@ export async function deleteChannel(id: string): Promise<void> {
 	});
 	if (!res.ok) throw new Error("Не удалось удалить канал");
 }
+
+export type StreamEvent = {
+	event_id: string;
+	event_type: string;
+	occurred_at: string;
+	context: Record<string, any>;
+	metadata: Record<string, any>;
+};
+
+export async function getStreamMessages(eventTypes: string[] = [], limit: number = 10): Promise<StreamEvent[]> {
+	const params = new URLSearchParams();
+	if (eventTypes.length > 0) {
+		eventTypes.forEach(et => params.append("eventTypes", et));
+	}
+	params.append("limit", limit.toString());
+	
+	const res = await fetch(`${API_URL}/stream/messages?${params.toString()}`);
+	if (!res.ok) throw new Error("Не удалось загрузить сообщения");
+	return res.json();
+}

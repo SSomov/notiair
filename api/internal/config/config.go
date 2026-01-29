@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 )
 
 type HTTPConfig struct {
@@ -24,10 +25,22 @@ type DatabaseConfig struct {
 	SSLMode  string
 }
 
+type StreamConfig struct {
+	Brokers []string
+	Topic   string
+	GroupID string
+}
+
+type RedisConfig struct {
+	URL string
+}
+
 type Config struct {
-	HTTP  HTTPConfig
-	Queue QueueConfig
-	DB    DatabaseConfig
+	HTTP   HTTPConfig
+	Queue  QueueConfig
+	DB     DatabaseConfig
+	Stream StreamConfig
+	Redis  RedisConfig
 }
 
 func Load() (Config, error) {
@@ -48,6 +61,14 @@ func Load() (Config, error) {
 			Name:     getEnv("DB_NAME", "notiair"),
 			SSLMode:  getEnv("DB_SSLMODE", "disable"),
 		},
+		Stream: StreamConfig{
+			Brokers: parseBrokers(getEnv("STREAM_BROKERS", "localhost:19092")),
+			Topic:   getEnv("STREAM_TOPIC", "test-topic"),
+			GroupID: getEnv("STREAM_GROUP_ID", "notiair-workflow-consumer"),
+		},
+		Redis: RedisConfig{
+			URL: getEnv("REDIS_URL", "localhost:6379"),
+		},
 	}
 
 	return cfg, nil
@@ -67,4 +88,15 @@ func getEnvInt(key string, fallback int) int {
 		}
 	}
 	return fallback
+}
+
+func parseBrokers(brokersStr string) []string {
+	if brokersStr == "" {
+		return []string{"localhost:19092"}
+	}
+	brokers := strings.Split(brokersStr, ",")
+	for i := range brokers {
+		brokers[i] = strings.TrimSpace(brokers[i])
+	}
+	return brokers
 }
