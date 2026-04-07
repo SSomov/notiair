@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-background text-text antialiased min-h-screen;
+  background-image: radial-gradient(circle at 15% 20%, rgba(37, 99, 235, 0.14), transparent 45%),
+    radial-gradient(circle at 80% 0%, rgba(14, 165, 233, 0.12), transparent 50%),
+    linear-gradient(180deg, #ffffff, #f8fafc 55%, #eef2ff 100%);
+  background-attachment: fixed;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-surfaceMuted;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-accent/40;
+}
+
+@layer components {
+  .glass-card {
+    @apply rounded-2xl border border-border bg-surface/95 p-6 shadow-glass backdrop-blur-sm;
+  }
+
+  .pill {
+    @apply inline-flex items-center gap-2 rounded-full bg-surfaceMuted px-4 py-1 text-xs font-medium uppercase tracking-wide text-muted;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-5 py-2 text-sm font-semibold text-accent-foreground shadow-lg shadow-accent/30 transition hover:-translate-y-0.5 hover:shadow-accent/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40;
+  }
+
+  .link-card {
+    @apply glass-card transition hover:border-accent/60 hover:shadow-accent/30;
+  }
+}
+

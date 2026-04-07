@@ -1,0 +1,146 @@
+# Порты сервисов наружу не публикуются — доступ только через Traefik (сеть public).
+name: notiair
+
+volumes:
+  postgres_data_notiair:
+    name: notiair-postgres-data
+  redis_data_notiair:
+    name: notiair-redis-data
+  redpanda_data_notiair:
+    name: notiair-redpanda-data
+
+networks:
+  public:
+    name: public
+    external: true
+  private:
+    driver: bridge
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: notiair-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-notiair}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-notiair}
+      POSTGRES_DB: ${DB_NAME:-notiair}
+    volumes:
+      - postgres_data_notiair:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-notiair}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - private
+
+  redis:
+    image: redis:7-alpine
+    container_name: notiair-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data_notiair:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - private
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v25.3.4
+    container_name: notiair-redpanda
+    restart: unless-stopped
+    command:
+      - redpanda
+      - start
+      - --kafka-addr
+      - internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr
+      - internal://redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr
+      - 0.0.0.0:8082
+      - --advertise-pandaproxy-addr
+      - redpanda:8082
+      - --schema-registry-addr
+      - 0.0.0.0:8081
+      - --rpc-addr
+      - 0.0.0.0:33145
+      - --advertise-rpc-addr
+      - redpanda:33145
+    volumes:
+      - redpanda_data_notiair:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health --exit-when-healthy || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    networks:
+      - private
+
+  api:
+    image: $DOCKER_IMAGE_URL:api-$IMAGE_TAG
+    container_name: notiair-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    environment:
+      HTTP_ADDR: :8080
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: ${DB_USER:-notiair}
+      DB_PASSWORD: ${DB_PASSWORD:-notiair}
+      DB_NAME: ${DB_NAME:-notiair}
+      DB_SSLMODE: ${DB_SSLMODE:-disable}
+      QUEUE_URL: redis://redis:6379
+      QUEUE_NAMESPACE: ${QUEUE_NAMESPACE:-notiair}
+      QUEUE_RETRY_LIMIT: ${QUEUE_RETRY_LIMIT:-5}
+      REDIS_URL: redis://redis:6379
+      STREAM_BROKERS: redpanda:9092
+      STREAM_TOPIC: ${STREAM_TOPIC:-test-topic}
+      STREAM_GROUP_ID: ${STREAM_GROUP_ID:-notiair-workflow-consumer}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.notiair-api-strip.stripprefix.prefixes=/notiair"
+      - "traefik.http.routers.notiair-api.entrypoints=https"
+      - "traefik.http.routers.notiair-api.tls=true"
+      - "traefik.http.routers.notiair-api.rule=Host(`${DOMAIN}`) && PathPrefix(`/notiair/api`)"
+      - "traefik.http.routers.notiair-api.service=notiair-api"
+      - "traefik.http.routers.notiair-api.priority=9000"
+      - "traefik.http.services.notiair-api.loadbalancer.server.port=8080"
+      - "traefik.http.routers.notiair-api.middlewares=vpn@file,notiair-api-strip@docker"
+    networks:
+      - public
+      - private
+
+  client:
+    image: $DOCKER_IMAGE_URL:client-$IMAGE_TAG
+    container_name: notiair-client
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3000"
+      ORIGIN: https://${DOMAIN}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.notiair-client.entrypoints=https"
+      - "traefik.http.routers.notiair-client.tls=true"
+      - "traefik.http.routers.notiair-client.rule=Host(`${DOMAIN}`) && PathPrefix(`/notiair`) && !PathPrefix(`/notiair/api`)"
+      - "traefik.http.routers.notiair-client.service=notiair-client"
+      - "traefik.http.routers.notiair-client.priority=8000"
+      - "traefik.http.services.notiair-client.loadbalancer.server.port=3000"
+      - "traefik.http.routers.notiair-client.middlewares=vpn@file"
+    networks:
+      - public
