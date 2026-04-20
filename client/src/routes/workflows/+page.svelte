@@ -70,6 +70,14 @@
 		}
 		return d.toLocaleDateString("ru-RU");
 	}
+
+	async function handleCopyWorkflowId(id: string) {
+		try {
+			await navigator.clipboard.writeText(id);
+		} catch {
+			// ignore — clipboard may be unavailable
+		}
+	}
 </script>
 
 <section class="space-y-8 px-4 pb-12 pt-2 md:px-12 md:pt-4">
@@ -92,13 +100,15 @@
 		<div class="space-y-4">
 			<div class="flex items-center justify-between">
 				<div>
-					<h2 class="text-lg font-semibold">{$t('workflows.activeScenarios.title')}</h2>
-					<p class="text-xs uppercase tracking-wide text-muted">
+					<h2 class="text-xl font-bold tracking-tight text-text">
+						{$t('workflows.activeScenarios.title')}
+					</h2>
+					<p class="mt-1 text-xs uppercase tracking-wide text-muted">
 						{$t('workflows.activeScenarios.subtitle')} • {activeWorkflows.length}
 					</p>
 				</div>
 			</div>
-			<div class="grid gap-4 sm:grid-cols-2">
+			<div class="flex flex-col gap-4">
 				{#if loading}
 					<p class="text-sm text-muted">Загрузка...</p>
 				{:else if error}
@@ -107,46 +117,56 @@
 					<p class="text-sm text-muted">Нет активных workflow</p>
 				{:else}
 					{#each activeWorkflows as workflow}
-						<article class="glass-card h-full">
-							<div class="flex items-start justify-between gap-3">
-								<div class="space-y-1">
-									<h3 class="text-base font-semibold text-text">{workflow.name}</h3>
-									<p class="text-xs uppercase tracking-wide text-muted">ID: {workflow.id}</p>
-								</div>
-								<div class="flex items-center gap-2">
-									<button
-										type="button"
-										class="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border text-muted transition hover:text-accent"
-										aria-label="{$t('workflows.activeScenarios.copy')}"
-										title="{$t('workflows.activeScenarios.copy')}"
-									>
-										<svg
-											xmlns="http://www.w3.org/2000/svg"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											stroke-width="1.5"
-											class="h-4 w-4"
+						<article
+							class="rounded-3xl border border-border bg-surface p-6 shadow-glass md:p-7"
+						>
+							<div class="space-y-4">
+								<div class="flex items-start justify-between gap-4">
+									<h3 class="min-w-0 text-base font-semibold text-text md:text-lg">
+										{workflow.name}
+									</h3>
+									<div class="flex shrink-0 items-center gap-2">
+										<button
+											type="button"
+											class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface text-muted transition hover:border-accent/40 hover:text-accent"
+											aria-label="{$t('workflows.activeScenarios.copy')}"
+											title="{$t('workflows.activeScenarios.copy')}"
+											on:click={() => handleCopyWorkflowId(workflow.id)}
 										>
-											<rect x="9" y="9" width="12" height="12" rx="2" ry="2" />
-											<path d="M5 15H4a2 2 0 0 1-2-2V4c0-1.1.9-2 2-2h9a2 2 0 0 1 2 2v1" />
-										</svg>
-									</button>
-									<span
-										class="inline-flex rounded-full bg-positive/10 px-3 py-1 text-xs font-medium text-positive"
-										>{$t('common.active')}</span
-									>
+											<svg
+												xmlns="http://www.w3.org/2000/svg"
+												viewBox="0 0 24 24"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="1.5"
+												class="h-4 w-4"
+												aria-hidden="true"
+											>
+												<rect x="9" y="9" width="12" height="12" rx="2" ry="2" />
+												<path
+													d="M5 15H4a2 2 0 0 1-2-2V4c0-1.1.9-2 2-2h9a2 2 0 0 1 2 2v1"
+												/>
+											</svg>
+										</button>
+										<span
+											class="inline-flex rounded-full bg-positive/12 px-3.5 py-1.5 text-xs font-semibold text-positive"
+										>
+											{$t('common.active')}
+										</span>
+									</div>
 								</div>
-							</div>
-							<p class="mt-3 text-sm text-muted">
-								{$t('workflows.activeScenarios.description')}
-							</p>
-							<div class="mt-4 flex items-center justify-between">
-							<a
-								href={hrefEdit(workflow.id)}
-								class="inline-flex text-sm font-semibold text-accent hover:underline"
-								>{$t('workflows.activeScenarios.openBuilder')}</a
-							>
+								<p class="break-all text-xs leading-relaxed text-muted">
+									ID: {workflow.id}
+								</p>
+								<p class="text-sm leading-relaxed text-muted">
+									{$t('workflows.activeScenarios.description')}
+								</p>
+								<a
+									href={hrefEdit(workflow.id)}
+									class="inline-flex text-sm font-semibold text-accent hover:underline"
+								>
+									{$t('workflows.activeScenarios.openBuilder')}
+								</a>
 							</div>
 						</article>
 					{/each}
