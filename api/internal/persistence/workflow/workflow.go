@@ -18,6 +18,7 @@ type WorkflowEntity struct {
 	Edges       datatypes.JSON    `gorm:"type:jsonb"`
 	Filters     datatypes.JSONMap `gorm:"type:jsonb"`
 	IsActive    bool              `gorm:"not null;default:false"`
+	CanvasZoom  *float64          `gorm:"type:double precision"`
 	CreatedAt   time.Time         `gorm:"autoCreateTime"`
 	UpdatedAt   time.Time         `gorm:"autoUpdateTime"`
 }
@@ -37,6 +38,7 @@ type SaveInput struct {
 	Edges       []byte
 	Filters     map[string]string
 	IsActive    bool
+	CanvasZoom  *float64
 }
 
 type repository struct {
@@ -70,6 +72,7 @@ func (r *repository) Save(ctx context.Context, input SaveInput) (WorkflowEntity,
 			Edges:       datatypes.JSON(input.Edges),
 			Filters:     datatypes.JSONMap{},
 			IsActive:    input.IsActive,
+			CanvasZoom:  input.CanvasZoom,
 		}
 		for k, v := range input.Filters {
 			entity.Filters[k] = v
@@ -85,6 +88,7 @@ func (r *repository) Save(ctx context.Context, input SaveInput) (WorkflowEntity,
 		entity.Nodes = datatypes.JSON(input.Nodes)
 		entity.Edges = datatypes.JSON(input.Edges)
 		entity.IsActive = input.IsActive
+		entity.CanvasZoom = input.CanvasZoom
 		entity.Filters = datatypes.JSONMap{}
 		for k, v := range input.Filters {
 			entity.Filters[k] = v
@@ -92,12 +96,13 @@ func (r *repository) Save(ctx context.Context, input SaveInput) (WorkflowEntity,
 
 		// Use Updates to ensure JSONB fields are properly updated
 		if err := r.db.WithContext(ctx).Model(&entity).Updates(map[string]interface{}{
-			"name":        entity.Name,
-			"description": entity.Description,
-			"nodes":       entity.Nodes,
-			"edges":       entity.Edges,
-			"filters":     entity.Filters,
-			"is_active":   entity.IsActive,
+			"name":         entity.Name,
+			"description":  entity.Description,
+			"nodes":        entity.Nodes,
+			"edges":        entity.Edges,
+			"filters":      entity.Filters,
+			"is_active":    entity.IsActive,
+			"canvas_zoom":  entity.CanvasZoom,
 		}).Error; err != nil {
 			return WorkflowEntity{}, err
 		}

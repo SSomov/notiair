@@ -121,6 +121,7 @@ type workflowRequest struct {
 	Nodes       []workflow.Node   `json:"nodes"`
 	Edges       []workflow.Edge   `json:"edges"`
 	Filters     map[string]string `json:"filters"`
+	CanvasZoom  *float64          `json:"canvasZoom,omitempty"`
 }
 
 func (h *Handler) saveWorkflow(c *fiber.Ctx) error {
@@ -136,6 +137,7 @@ func (h *Handler) saveWorkflow(c *fiber.Ctx) error {
 		Nodes:       req.Nodes,
 		Edges:       req.Edges,
 		Filters:     req.Filters,
+		CanvasZoom:  req.CanvasZoom,
 	}
 
 	saved, err := h.workflows.Save(h.contextFromFiber(c), wf)

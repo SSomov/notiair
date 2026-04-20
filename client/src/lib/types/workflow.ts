@@ -20,6 +20,8 @@ export type WorkflowDraft = {
 	edges: WorkflowEdge[];
 	filters: Record<string, string>;
 	isActive?: boolean;
+	/** Масштаб холста редактора (например 1, 1.25); опционально для старых записей */
+	canvasZoom?: number;
 	createdAt?: string;
 	updatedAt?: string;
 	activeNode?: WorkflowNode | null;

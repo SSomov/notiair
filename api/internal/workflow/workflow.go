@@ -20,6 +20,7 @@ type Workflow struct {
 	Edges       []Edge            `json:"edges"`
 	Filters     map[string]string `json:"filters"`
 	IsActive    bool              `json:"isActive"`
+	CanvasZoom  *float64          `json:"canvasZoom,omitempty"`
 	CreatedAt   time.Time         `json:"createdAt"`
 	UpdatedAt   time.Time         `json:"updatedAt"`
 }
@@ -133,6 +134,7 @@ func (r *dbRepository) Save(ctx context.Context, wf Workflow) (Workflow, error) 
 		Edges:       edgesJSON,
 		Filters:     wf.Filters,
 		IsActive:    wf.IsActive,
+		CanvasZoom:  wf.CanvasZoom,
 	})
 	if err != nil {
 		return Workflow{}, err
@@ -163,6 +165,7 @@ func (r *dbRepository) Save(ctx context.Context, wf Workflow) (Workflow, error) 
 		Edges:       edges,
 		Filters:     filters,
 		IsActive:    entity.IsActive,
+		CanvasZoom:  entity.CanvasZoom,
 		CreatedAt:   entity.CreatedAt,
 		UpdatedAt:   entity.UpdatedAt,
 	}, nil
@@ -199,6 +202,7 @@ func (r *dbRepository) FindByID(ctx context.Context, id string) (Workflow, error
 		Edges:       edges,
 		Filters:     filters,
 		IsActive:    entity.IsActive,
+		CanvasZoom:  entity.CanvasZoom,
 		CreatedAt:   entity.CreatedAt,
 		UpdatedAt:   entity.UpdatedAt,
 	}, nil
@@ -237,6 +241,7 @@ func (r *dbRepository) List(ctx context.Context) ([]Workflow, error) {
 			Edges:       edges,
 			Filters:     filters,
 			IsActive:    entity.IsActive,
+			CanvasZoom:  entity.CanvasZoom,
 			CreatedAt:   entity.CreatedAt,
 			UpdatedAt:   entity.UpdatedAt,
 		}

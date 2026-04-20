@@ -81,6 +81,9 @@
 	const WORKSPACE_ZOOM_MAX = 2;
 	const WORKSPACE_ZOOM_STEP = 0.1;
 
+	const clampWorkspaceZoom = (z: number) =>
+		Math.min(WORKSPACE_ZOOM_MAX, Math.max(WORKSPACE_ZOOM_MIN, z));
+
 	/** После смены scale у холста getBoundingClientRect в том же кадре может быть от старого layout — пересчитываем рёбра после reflow. */
 	const bumpWorkspaceLayout = () => {
 		tick().then(() => {
@@ -93,23 +96,21 @@
 	};
 
 	const handleWorkspaceZoomIn = () => {
-		workspaceZoom = Math.min(
-			WORKSPACE_ZOOM_MAX,
+		workspaceZoom = clampWorkspaceZoom(
 			Math.round((workspaceZoom + WORKSPACE_ZOOM_STEP) * 100) / 100
 		);
 		bumpWorkspaceLayout();
 	};
 
 	const handleWorkspaceZoomOut = () => {
-		workspaceZoom = Math.max(
-			WORKSPACE_ZOOM_MIN,
+		workspaceZoom = clampWorkspaceZoom(
 			Math.round((workspaceZoom - WORKSPACE_ZOOM_STEP) * 100) / 100
 		);
 		bumpWorkspaceLayout();
 	};
 
 	const handleWorkspaceZoomReset = () => {
-		workspaceZoom = 1;
+		workspaceZoom = clampWorkspaceZoom(1);
 		bumpWorkspaceLayout();
 	};
 
@@ -1034,6 +1035,14 @@
 				// Принудительно обновляем реактивность
 				edges = [...edges];
 				nodes = [...nodes];
+
+				if (
+					typeof workflow.canvasZoom === 'number' &&
+					Number.isFinite(workflow.canvasZoom)
+				) {
+					workspaceZoom = clampWorkspaceZoom(workflow.canvasZoom);
+					bumpWorkspaceLayout();
+				}
 			} catch (e) {
 				error = e instanceof Error ? e.message : 'errors.loadWorkflow';
 			} finally {
@@ -1101,6 +1110,7 @@
 				edges: edgesData,
 				filters: {},
 				isActive: isActive,
+				canvasZoom: clampWorkspaceZoom(workspaceZoom),
 			};
 
 			await saveWorkflow(workflowData);

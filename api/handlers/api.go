@@ -172,6 +172,7 @@ type workflowRequest struct {
 	Edges       []workflow.Edge   `json:"edges"`
 	Filters     map[string]string `json:"filters"`
 	IsActive    bool              `json:"isActive"`
+	CanvasZoom  *float64          `json:"canvasZoom,omitempty"`
 }
 
 func (a *API) SaveWorkflow(c *fiber.Ctx) error {
@@ -188,6 +189,7 @@ func (a *API) SaveWorkflow(c *fiber.Ctx) error {
 		Edges:       req.Edges,
 		Filters:     req.Filters,
 		IsActive:    req.IsActive,
+		CanvasZoom:  req.CanvasZoom,
 	}
 
 	saved, err := a.workflows.Save(c.Context(), wf)
