@@ -3,6 +3,9 @@
 	import { page } from "$app/stores";
 	import { resolve } from "$app/paths";
 	import { getLocaleFromPath, addLocaleToPath } from "$lib/i18n/utils";
+	import { get } from "svelte/store";
+	import { locale, t } from "$lib/i18n";
+	import { resolveI18nError } from "$lib/i18n/resolveError";
 	import {
 		listSmtpAccounts,
 		createSmtpAccount,
@@ -15,6 +18,7 @@
 	let accounts: SmtpAccount[] = [];
 	let loading = true;
 	let error: string | null = null;
+	let errorDisplay: string | null = null;
 
 	let modalOpen = false;
 	let editing: SmtpAccount | null = null;
@@ -51,7 +55,7 @@
 			const data = await listSmtpAccounts();
 			accounts = Array.isArray(data) ? data : [];
 		} catch (e) {
-			error = e instanceof Error ? e.message : "Не удалось загрузить аккаунты";
+			error = e instanceof Error ? e.message : "errors.loadSmtpAccounts";
 			accounts = [];
 		} finally {
 			loading = false;
@@ -94,7 +98,7 @@
 		if (!host || !name || saving) return;
 		const port = Number(portInput);
 		if (!Number.isFinite(port) || port < 1 || port > 65535) {
-			error = "Укажите порт от 1 до 65535";
+			error = "errors.smtpPortRange";
 			return;
 		}
 
@@ -124,21 +128,21 @@
 
 			closeModal();
 		} catch (e) {
-			error = e instanceof Error ? e.message : "Не удалось сохранить аккаунт";
+			error = e instanceof Error ? e.message : "errors.saveSmtpAccount";
 		} finally {
 			saving = false;
 		}
 	}
 
 	async function handleDelete(id: string) {
-		if (!confirm("Удалить этот SMTP-аккаунт?")) return;
+		if (!confirm(get(t)("smtpPage.confirmDelete"))) return;
 
 		try {
 			error = null;
 			await deleteSmtpAccount(id);
 			accounts = accounts.filter((a) => a.id !== id);
 		} catch (e) {
-			error = e instanceof Error ? e.message : "Не удалось удалить аккаунт";
+			error = e instanceof Error ? e.message : "errors.deleteSmtpAccount";
 		}
 	}
 
@@ -148,8 +152,13 @@
 			const updated = await toggleSmtpAccountActive(acc.id, !acc.isActive);
 			accounts = accounts.map((a) => (a.id === acc.id ? updated : a));
 		} catch (e) {
-			error = e instanceof Error ? e.message : "Не удалось изменить статус";
+			error = e instanceof Error ? e.message : "errors.toggleSmtpStatus";
 		}
+	}
+
+	$: {
+		$locale;
+		errorDisplay = error ? resolveI18nError(error) : null;
 	}
 </script>
 
@@ -161,38 +170,38 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
         </svg>
       </a>
-      <span class="pill">smtp connectors</span>
+      <span class="pill">{$t('smtpPage.pill')}</span>
     </div>
     <p class="text-sm text-muted max-w-2xl">
-      Несколько SMTP-аккаунтов для отправки писем: хост, порт, шифрование и учётные данные.
+      {$t('smtpPage.intro')}
     </p>
   </header>
 
   <div class="space-y-4">
     <div class="flex items-center justify-between">
-      <h2 class="text-lg font-semibold text-text">SMTP-аккаунты</h2>
+      <h2 class="text-lg font-semibold text-text">{$t('smtpPage.title')}</h2>
       <button
         type="button"
         class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm"
         on:click={() => openModal()}
       >
-        Добавить аккаунт
+        {$t('smtpPage.addAccount')}
       </button>
     </div>
 
     {#if error}
       <div class="glass-card p-4 bg-red-50 border-red-200">
-        <p class="text-sm text-red-600">{error}</p>
+        <p class="text-sm text-red-600">{errorDisplay}</p>
       </div>
     {/if}
 
     {#if loading}
       <div class="glass-card p-8 text-center">
-        <p class="text-sm text-muted">Загрузка...</p>
+        <p class="text-sm text-muted">{$t('smtpPage.loading')}</p>
       </div>
     {:else if accounts.length === 0}
       <div class="glass-card p-8 text-center">
-        <p class="text-sm text-muted">Нет добавленных SMTP-аккаунтов</p>
+        <p class="text-sm text-muted">{$t('smtpPage.empty')}</p>
       </div>
     {:else}
       <div class="grid gap-4 md:grid-cols-2">
@@ -202,7 +211,7 @@
               <div class="flex-1 space-y-2 min-w-0">
                 <div class="space-y-1">
                   <div class="flex items-center justify-between gap-2">
-                    <p class="font-semibold text-text truncate">{acc.name || "Без названия"}</p>
+                    <p class="font-semibold text-text truncate">{acc.name || $t('common.noName')}</p>
                     <label class="relative inline-flex items-center cursor-pointer shrink-0">
                       <input
                         type="checkbox"
@@ -211,7 +220,7 @@
                         class="sr-only peer"
                       />
                       <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-accent rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
-                      <span class="ml-2 text-xs text-muted">{acc.isActive ? "Активен" : "Неактивен"}</span>
+                      <span class="ml-2 text-xs text-muted">{acc.isActive ? $t('common.activeFemale') : $t('common.inactive')}</span>
                     </label>
                   </div>
                   <p class="text-xs font-mono text-muted break-all">
@@ -223,13 +232,13 @@
                     {/if}
                   </p>
                   {#if acc.from}
-                    <p class="text-xs text-muted">From: {acc.from}</p>
+                    <p class="text-xs text-muted">{$t('smtpPage.fromPrefix')} {acc.from}</p>
                   {/if}
                   {#if acc.username}
-                    <p class="text-xs text-muted">Логин: {acc.username}</p>
+                    <p class="text-xs text-muted">{$t('smtpPage.loginPrefix')} {acc.username}</p>
                   {/if}
                   {#if acc.password}
-                    <p class="text-xs font-mono text-muted">Пароль: {maskSecret(acc.password)}</p>
+                    <p class="text-xs font-mono text-muted">{$t('smtpPage.passwordPrefix')} {maskSecret(acc.password)}</p>
                   {/if}
                 </div>
                 {#if acc.comment}
@@ -240,8 +249,8 @@
                 <button
                   type="button"
                   class="icon-btn"
-                  title="Редактировать"
-                  aria-label="Редактировать"
+                  title={$t('common.edit')}
+                  aria-label={$t('common.edit')}
                   on:click={() => openModal(acc)}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
@@ -252,8 +261,8 @@
                 <button
                   type="button"
                   class="icon-btn"
-                  title="Удалить"
-                  aria-label="Удалить"
+                  title={$t('common.delete')}
+                  aria-label={$t('common.delete')}
                   on:click={() => handleDelete(acc.id)}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
@@ -278,26 +287,26 @@
       <div class="modal modal-wide">
         <div class="modal-header">
           <h3 class="text-lg font-semibold text-text">
-            {editing ? 'Редактировать SMTP' : 'Новый SMTP-аккаунт'}
+            {editing ? $t('smtpPage.editTitle') : $t('smtpPage.newTitle')}
           </h3>
-          <button type="button" class="modal-close" on:click={closeModal} aria-label="Закрыть">
+          <button type="button" class="modal-close" on:click={closeModal} aria-label={$t('common.close')}>
             ✕
           </button>
         </div>
         <div class="modal-body space-y-4">
           <div class="space-y-1">
-            <label class="text-sm font-medium text-text" for="smtp-name">Название</label>
+            <label class="text-sm font-medium text-text" for="smtp-name">{$t('common.name')}</label>
             <input
               id="smtp-name"
               class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
               bind:value={nameInput}
-              placeholder="Например: Transactional"
+              placeholder={$t('smtpPage.namePlaceholder')}
               autocomplete="off"
             />
           </div>
           <div class="grid gap-4 sm:grid-cols-2">
             <div class="space-y-1">
-              <label class="text-sm font-medium text-text" for="smtp-host">Хост</label>
+              <label class="text-sm font-medium text-text" for="smtp-host">{$t('common.host')}</label>
               <input
                 id="smtp-host"
                 class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
@@ -307,7 +316,7 @@
               />
             </div>
             <div class="space-y-1">
-              <label class="text-sm font-medium text-text" for="smtp-port">Порт</label>
+              <label class="text-sm font-medium text-text" for="smtp-port">{$t('common.port')}</label>
               <input
                 id="smtp-port"
                 type="number"
@@ -319,7 +328,7 @@
             </div>
           </div>
           <div class="space-y-1">
-            <label class="text-sm font-medium text-text" for="smtp-from">Адрес отправителя (From)</label>
+            <label class="text-sm font-medium text-text" for="smtp-from">{$t('smtpPage.fromLabel')}</label>
             <input
               id="smtp-from"
               type="email"
@@ -331,7 +340,7 @@
           </div>
           <div class="grid gap-4 sm:grid-cols-2">
             <div class="space-y-1">
-              <label class="text-sm font-medium text-text" for="smtp-user">Логин</label>
+              <label class="text-sm font-medium text-text" for="smtp-user">{$t('common.login')}</label>
               <input
                 id="smtp-user"
                 class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
@@ -340,13 +349,13 @@
               />
             </div>
             <div class="space-y-1">
-              <label class="text-sm font-medium text-text" for="smtp-pass">Пароль</label>
+              <label class="text-sm font-medium text-text" for="smtp-pass">{$t('common.password')}</label>
               <input
                 id="smtp-pass"
                 type="password"
                 class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
                 bind:value={passwordInput}
-                placeholder={editing ? 'Оставьте пустым, чтобы не менять' : ''}
+                placeholder={editing ? $t('smtpPage.passwordLeaveBlank') : ''}
                 autocomplete="new-password"
               />
             </div>
@@ -354,32 +363,32 @@
           <div class="flex flex-wrap gap-4">
             <label class="inline-flex items-center gap-2 text-sm text-text cursor-pointer">
               <input type="checkbox" bind:checked={useTlsInput} class="rounded border-border" />
-              Implicit TLS (обычно порт 465)
+              {$t('smtpPage.implicitTls')}
             </label>
             <label class="inline-flex items-center gap-2 text-sm text-text cursor-pointer">
               <input type="checkbox" bind:checked={useStartTlsInput} class="rounded border-border" />
-              STARTTLS (обычно 587)
+              {$t('smtpPage.startTls')}
             </label>
           </div>
           <div class="space-y-1">
-            <label class="text-sm font-medium text-text" for="smtp-comment">Комментарий</label>
+            <label class="text-sm font-medium text-text" for="smtp-comment">{$t('common.comment')}</label>
             <textarea
               id="smtp-comment"
               class="h-20 w-full resize-none rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
               bind:value={commentInput}
-              placeholder="Внутренние пометки"
+              placeholder={$t('common.internalNotes')}
             ></textarea>
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn-secondary" on:click={closeModal}>Отменить</button>
+          <button type="button" class="btn-secondary" on:click={closeModal}>{$t('common.cancel')}</button>
           <button
             type="button"
             class="btn-primary"
             on:click={handleSave}
             disabled={!hostInput.trim() || !nameInput.trim() || saving}
           >
-            {saving ? 'Сохранение...' : editing ? 'Сохранить' : 'Добавить'}
+            {saving ? $t('common.saving') : editing ? $t('common.save') : $t('common.add')}
           </button>
         </div>
       </div>

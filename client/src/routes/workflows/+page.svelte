@@ -2,10 +2,12 @@
 	import { onMount } from "svelte";
 	import { page } from "$app/stores";
 	import { resolve } from "$app/paths";
-	import { t } from "$lib/i18n";
+	import { locale, t } from "$lib/i18n";
 	import { listWorkflows, deleteWorkflow } from "$lib/api";
 	import { getLocaleFromPath, addLocaleToPath } from "$lib/i18n/utils";
+	import { resolveI18nError } from "$lib/i18n/resolveError";
 	import type { WorkflowDraft } from "$lib/types/workflow";
+	import { get } from "svelte/store";
 
 	$: loc = getLocaleFromPath($page.url.pathname);
 	$: hrefNew = resolve(addLocaleToPath("/workflows/new", loc));
@@ -16,12 +18,13 @@
 	let loading = true;
 	let error: string | null = null;
 	let deletingId: string | null = null;
+	let errorDisplay: string | null = null;
 
 	onMount(async () => {
 		try {
 			workflows = await listWorkflows();
 		} catch (e) {
-			error = e instanceof Error ? e.message : "Не удалось загрузить workflow";
+			error = e instanceof Error ? e.message : "errors.loadWorkflows";
 			workflows = [];
 		} finally {
 			loading = false;
@@ -29,7 +32,7 @@
 	});
 
 	async function handleDelete(id: string) {
-		if (!confirm("Вы уверены, что хотите удалить этот черновик?")) {
+		if (!confirm(get(t)("workflows.confirmDeleteDraft"))) {
 			return;
 		}
 
@@ -38,7 +41,7 @@
 			await deleteWorkflow(id);
 			workflows = workflows.filter((w) => w.id !== id);
 		} catch (e) {
-			error = e instanceof Error ? e.message : "Не удалось удалить workflow";
+			error = e instanceof Error ? e.message : "errors.deleteWorkflow";
 		} finally {
 			deletingId = null;
 		}
@@ -47,7 +50,7 @@
 	$: activeWorkflows = workflows.filter((w) => w.isActive === true);
 	$: draftWorkflows = workflows.filter((w) => w.isActive !== true);
 
-	function formatUpdatedDate(date: string | undefined): string {
+	function formatUpdatedDate(date: string | undefined, localeCode: string): string {
 		if (!date) return "";
 		const d = new Date(date);
 		const now = new Date();
@@ -55,20 +58,23 @@
 		const diffMins = Math.floor(diffMs / 60000);
 		const diffHours = Math.floor(diffMs / 3600000);
 		const diffDays = Math.floor(diffMs / 86400000);
-
+		const locTag = localeCode === "ru" ? "ru-RU" : "en-US";
+		const rtf = new Intl.RelativeTimeFormat(locTag, { numeric: "auto" });
 		if (diffMins < 60) {
-			return `${diffMins} ${diffMins === 1 ? "минуту" : diffMins < 5 ? "минуты" : "минут"} назад`;
+			return rtf.format(-diffMins, "minute");
 		}
 		if (diffHours < 24) {
-			return `${diffHours} ${diffHours === 1 ? "час" : diffHours < 5 ? "часа" : "часов"} назад`;
-		}
-		if (diffDays === 1) {
-			return "вчера";
+			return rtf.format(-diffHours, "hour");
 		}
 		if (diffDays < 7) {
-			return `${diffDays} ${diffDays < 5 ? "дня" : "дней"} назад`;
+			return rtf.format(-diffDays, "day");
 		}
-		return d.toLocaleDateString("ru-RU");
+		return d.toLocaleDateString(locTag);
+	}
+
+	$: {
+		$locale;
+		errorDisplay = error ? resolveI18nError(error) : null;
 	}
 
 	async function handleCopyWorkflowId(id: string) {
@@ -81,19 +87,11 @@
 </script>
 
 <section class="space-y-8 px-4 pb-12 pt-2 md:px-12 md:pt-4">
-	<header class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-		<div class="space-y-2">
-			<span class="pill">{$t('common.workflows')}</span>
-			<p class="text-sm text-muted max-w-2xl">
-				{$t('workflows.description')}
-			</p>
-		</div>
-		<div class="flex flex-wrap gap-3">
-			<a
-				href={hrefNew}
-				class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm">{$t('workflows.newWorkflow')}</a
-			>
-		</div>
+	<header class="space-y-2">
+		<span class="pill">{$t('common.workflows')}</span>
+		<p class="text-sm text-muted max-w-2xl">
+			{$t('workflows.description')}
+		</p>
 	</header>
 
 	<div class="grid gap-8 lg:grid-cols-2">
@@ -110,11 +108,11 @@
 			</div>
 			<div class="flex flex-col gap-4">
 				{#if loading}
-					<p class="text-sm text-muted">Загрузка...</p>
+					<p class="text-sm text-muted">{$t('workflows.list.loading')}</p>
 				{:else if error}
-					<p class="text-sm text-negative">{error}</p>
+					<p class="text-sm text-negative">{errorDisplay}</p>
 				{:else if activeWorkflows.length === 0}
-					<p class="text-sm text-muted">Нет активных workflow</p>
+					<p class="text-sm text-muted">{$t('workflows.list.noActive')}</p>
 				{:else}
 					{#each activeWorkflows as workflow}
 						<article
@@ -190,29 +188,30 @@
 			</div>
 			<div class="grid gap-4 sm:grid-cols-2">
 				{#if loading}
-					<p class="text-sm text-muted">Загрузка...</p>
+					<p class="text-sm text-muted">{$t('workflows.list.loading')}</p>
 				{:else if error}
-					<p class="text-sm text-negative">{error}</p>
+					<p class="text-sm text-negative">{errorDisplay}</p>
 				{:else if draftWorkflows.length === 0}
-					<article
-						class="glass-card flex h-full items-center justify-center border-dashed border-border text-muted"
+					<a
+						href={hrefNew}
+						class="glass-card flex h-full min-h-[8rem] cursor-pointer items-center justify-center border-dashed border-border text-muted no-underline transition hover:border-accent/40 hover:text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
 					>
 						<div class="text-center">
 							<p class="font-semibold">{$t('workflows.drafts.createDraft')}</p>
 							<p class="text-sm text-muted">{$t('workflows.drafts.createDraftDescription')}</p>
 						</div>
-					</article>
+					</a>
 				{:else}
 					{#each draftWorkflows as draft}
 						<article class="glass-card h-full">
 							<div class="flex items-start justify-between gap-3">
 								<div class="space-y-2">
-									<h3 class="text-base font-semibold text-text">{draft.name || "Без названия"}</h3>
+									<h3 class="text-base font-semibold text-text">{draft.name || $t('common.noName')}</h3>
 									{#if draft.description}
 										<p class="text-sm text-muted">{draft.description}</p>
 									{/if}
 									<p class="text-xs text-muted">
-										{$t('workflows.drafts.updated')} {formatUpdatedDate(draft.updatedAt)}
+										{$t('workflows.drafts.updated')} {formatUpdatedDate(draft.updatedAt, loc)}
 									</p>
 								</div>
 								<button
@@ -244,14 +243,15 @@
 							>
 						</article>
 					{/each}
-					<article
-						class="glass-card flex h-full items-center justify-center border-dashed border-border text-muted"
+					<a
+						href={hrefNew}
+						class="glass-card flex h-full min-h-[8rem] cursor-pointer items-center justify-center border-dashed border-border text-muted no-underline transition hover:border-accent/40 hover:text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
 					>
 						<div class="text-center">
 							<p class="font-semibold">{$t('workflows.drafts.createDraft')}</p>
 							<p class="text-sm text-muted">{$t('workflows.drafts.createDraftDescription')}</p>
 						</div>
-					</article>
+					</a>
 				{/if}
 			</div>
 		</div>

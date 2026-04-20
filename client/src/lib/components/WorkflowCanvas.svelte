@@ -1,10 +1,11 @@
 <script lang="ts">
-import type { WorkflowDraft } from "@types/workflow";
-import type { Writable } from "svelte/store";
+	import { t } from "$lib/i18n";
+	import type { WorkflowDraft } from "@types/workflow";
+	import type { Writable } from "svelte/store";
 
-export let workflows: Writable<WorkflowDraft[]>;
+	export let workflows: Writable<WorkflowDraft[]>;
 
-$: workflowCount = $workflows.length;
+	$: workflowCount = $workflows.length;
 </script>
 
 <div class="glass-card h-[640px] w-full border-dashed border-border/60 bg-surface/60 p-0">
@@ -15,11 +16,13 @@ $: workflowCount = $workflows.length;
 			🧩
 		</span>
 		<div class="space-y-2">
-			<p class="text-sm uppercase tracking-widest">Canvas в разработке</p>
+			<p class="text-sm uppercase tracking-widest">{$t('workflowCanvas.wip')}</p>
 			<p class="max-w-md text-sm text-muted">
-				Загрузите workflow или добавьте новые узлы, чтобы собрать идеальную логику маршрутизации.
+				{$t('workflowCanvas.hint')}
 			</p>
-			<p class="text-xs text-muted/70">Активных конфигураций: {workflowCount}</p>
+			<p class="text-xs text-muted/70">
+				{$t('workflowCanvas.activeConfigs', { count: workflowCount })}
+			</p>
 		</div>
 	</div>
 </div>

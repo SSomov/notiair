@@ -5,14 +5,14 @@ const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api/v1";
 
 export async function listWorkflows(): Promise<WorkflowDraft[]> {
 	const res = await fetch(`${API_URL}/workflows`);
-	if (!res.ok) throw new Error("Не удалось загрузить workflow");
+	if (!res.ok) throw new Error("errors.loadWorkflows");
 	const data = await res.json();
 	return Array.isArray(data) ? data : [];
 }
 
 export async function getWorkflow(id: string): Promise<WorkflowDraft> {
 	const res = await fetch(`${API_URL}/workflows/${id}`);
-	if (!res.ok) throw new Error("Не удалось загрузить workflow");
+	if (!res.ok) throw new Error("errors.loadWorkflow");
 	return res.json();
 }
 
@@ -24,7 +24,7 @@ export async function saveWorkflow(
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(payload),
 	});
-	if (!res.ok) throw new Error("Не удалось сохранить workflow");
+	if (!res.ok) throw new Error("errors.saveWorkflow");
 	return res.json();
 }
 
@@ -32,7 +32,7 @@ export async function deleteWorkflow(id: string): Promise<void> {
 	const res = await fetch(`${API_URL}/workflows/${id}`, {
 		method: "DELETE",
 	});
-	if (!res.ok) throw new Error("Не удалось удалить workflow");
+	if (!res.ok) throw new Error("errors.deleteWorkflow");
 }
 
 export async function dispatchNotification(input: {
@@ -46,12 +46,12 @@ export async function dispatchNotification(input: {
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(input),
 	});
-	if (!res.ok) throw new Error("Не удалось отправить уведомление");
+	if (!res.ok) throw new Error("errors.dispatchNotification");
 }
 
 export async function listQueue(): Promise<QueueItem[]> {
 	const res = await fetch(`${API_URL}/queues/pending`);
-	if (!res.ok) throw new Error("Не удалось загрузить очередь");
+	if (!res.ok) throw new Error("errors.loadQueue");
 	return res.json();
 }
 
@@ -65,7 +65,7 @@ export type TelegramToken = {
 
 export async function listTelegramTokens(): Promise<TelegramToken[]> {
 	const res = await fetch(`${API_URL}/connectors/telegram`);
-	if (!res.ok) throw new Error("Не удалось загрузить токены");
+	if (!res.ok) throw new Error("errors.loadTokens");
 	const data = await res.json();
 	return Array.isArray(data) ? data : [];
 }
@@ -78,7 +78,7 @@ export async function createTelegramToken(
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(payload),
 	});
-	if (!res.ok) throw new Error("Не удалось создать токен");
+	if (!res.ok) throw new Error("errors.createToken");
 	return res.json();
 }
 
@@ -91,7 +91,7 @@ export async function updateTelegramToken(
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(payload),
 	});
-	if (!res.ok) throw new Error("Не удалось обновить токен");
+	if (!res.ok) throw new Error("errors.updateToken");
 	return res.json();
 }
 
@@ -99,7 +99,7 @@ export async function deleteTelegramToken(id: string): Promise<void> {
 	const res = await fetch(`${API_URL}/connectors/telegram/${id}`, {
 		method: "DELETE",
 	});
-	if (!res.ok) throw new Error("Не удалось удалить токен");
+	if (!res.ok) throw new Error("errors.deleteToken");
 }
 
 export async function toggleTelegramTokenActive(
@@ -111,7 +111,7 @@ export async function toggleTelegramTokenActive(
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({ isActive }),
 	});
-	if (!res.ok) throw new Error("Не удалось изменить статус токена");
+	if (!res.ok) throw new Error("errors.toggleTokenStatus");
 	return res.json();
 }
 
@@ -131,7 +131,7 @@ export type SmtpAccount = {
 
 export async function listSmtpAccounts(): Promise<SmtpAccount[]> {
 	const res = await fetch(`${API_URL}/connectors/smtp`);
-	if (!res.ok) throw new Error("Не удалось загрузить SMTP-аккаунты");
+	if (!res.ok) throw new Error("errors.loadSmtpAccounts");
 	const data = await res.json();
 	return Array.isArray(data) ? data : [];
 }
@@ -144,7 +144,7 @@ export async function createSmtpAccount(
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(payload),
 	});
-	if (!res.ok) throw new Error("Не удалось создать SMTP-аккаунт");
+	if (!res.ok) throw new Error("errors.createSmtpAccount");
 	return res.json();
 }
 
@@ -157,7 +157,7 @@ export async function updateSmtpAccount(
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(payload),
 	});
-	if (!res.ok) throw new Error("Не удалось обновить SMTP-аккаунт");
+	if (!res.ok) throw new Error("errors.updateSmtpAccount");
 	return res.json();
 }
 
@@ -165,7 +165,7 @@ export async function deleteSmtpAccount(id: string): Promise<void> {
 	const res = await fetch(`${API_URL}/connectors/smtp/${id}`, {
 		method: "DELETE",
 	});
-	if (!res.ok) throw new Error("Не удалось удалить SMTP-аккаунт");
+	if (!res.ok) throw new Error("errors.deleteSmtpAccount");
 }
 
 export async function toggleSmtpAccountActive(
@@ -177,7 +177,7 @@ export async function toggleSmtpAccountActive(
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({ isActive }),
 	});
-	if (!res.ok) throw new Error("Не удалось изменить статус SMTP-аккаунта");
+	if (!res.ok) throw new Error("errors.toggleSmtpAccountStatus");
 	return res.json();
 }
 
@@ -191,7 +191,7 @@ export type Channel = {
 
 export async function listChannels(connectorId: string): Promise<Channel[]> {
 	const res = await fetch(`${API_URL}/connectors/${connectorId}/channels`);
-	if (!res.ok) throw new Error("Не удалось загрузить каналы");
+	if (!res.ok) throw new Error("errors.loadChannels");
 	const data = await res.json();
 	return Array.isArray(data) ? data : [];
 }
@@ -205,7 +205,7 @@ export async function createChannel(
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(payload),
 	});
-	if (!res.ok) throw new Error("Не удалось создать канал");
+	if (!res.ok) throw new Error("errors.createChannel");
 	return res.json();
 }
 
@@ -218,7 +218,7 @@ export async function updateChannel(
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(payload),
 	});
-	if (!res.ok) throw new Error("Не удалось обновить канал");
+	if (!res.ok) throw new Error("errors.updateChannel");
 	return res.json();
 }
 
@@ -226,7 +226,7 @@ export async function deleteChannel(id: string): Promise<void> {
 	const res = await fetch(`${API_URL}/channels/${id}`, {
 		method: "DELETE",
 	});
-	if (!res.ok) throw new Error("Не удалось удалить канал");
+	if (!res.ok) throw new Error("errors.deleteChannel");
 }
 
 export type StreamEvent = {
@@ -245,6 +245,6 @@ export async function getStreamMessages(eventTypes: string[] = [], limit: number
 	params.append("limit", limit.toString());
 	
 	const res = await fetch(`${API_URL}/stream/messages?${params.toString()}`);
-	if (!res.ok) throw new Error("Не удалось загрузить сообщения");
+	if (!res.ok) throw new Error("errors.loadMessages");
 	return res.json();
 }

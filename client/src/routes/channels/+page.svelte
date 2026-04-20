@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount } from "svelte";
-	import { t } from "$lib/i18n";
+	import { get } from "svelte/store";
+	import { locale, t } from "$lib/i18n";
+	import { resolveI18nError } from "$lib/i18n/resolveError";
 	import {
 		listTelegramTokens,
 		listChannels,
@@ -27,7 +29,6 @@
 		name: string;
 		icon: string;
 		color: string;
-		description: string;
 		connectors: ConnectorEntry[];
 	};
 
@@ -35,6 +36,7 @@
 	let loading = true;
 	let error: string | null = null;
 	let saving = false;
+	let errorDisplay: string | null = null;
 
 	let groups: ChannelGroup[] = [
 		{
@@ -42,7 +44,6 @@
 			name: "Telegram",
 			icon: "✈️",
 			color: "text-accent",
-			description: "Боты и каналы Telegram.",
 			connectors: [],
 		},
 	];
@@ -67,7 +68,7 @@
 			await updateGroups();
 		} catch (e) {
 			console.error("Failed to load data:", e);
-			error = e instanceof Error ? e.message : "Не удалось загрузить данные";
+			error = e instanceof Error ? e.message : "errors.loadData";
 			telegramTokens = [];
 			await updateGroups();
 		} finally {
@@ -87,7 +88,7 @@
 									const channels = await listChannels(token.id);
 									return {
 										id: token.id,
-										name: token.name || "Без названия",
+										name: token.name || get(t)("common.noName"),
 										comment: token.comment || "",
 										channels: channels.map((ch) => ({
 											id: ch.id,
@@ -101,7 +102,7 @@
 									console.error(`Failed to load channels for ${token.id}:`, e);
 									return {
 										id: token.id,
-										name: token.name || "Без названия",
+										name: token.name || get(t)("common.noName"),
 										comment: token.comment || "",
 										channels: [],
 									};
@@ -216,7 +217,7 @@
 
 			closeModal();
 		} catch (e) {
-			error = e instanceof Error ? e.message : "Не удалось сохранить канал";
+			error = e instanceof Error ? e.message : "errors.saveChannel";
 		} finally {
 			saving = false;
 		}
@@ -227,7 +228,7 @@
 		connectorId: string,
 		channelId: string,
 	) {
-		if (!confirm("Вы уверены, что хотите удалить этот канал?")) return;
+		if (!confirm(get(t)("channelsPage.confirmDeleteChannel"))) return;
 
 		try {
 			error = null;
@@ -247,7 +248,7 @@
 				};
 			});
 		} catch (e) {
-			error = e instanceof Error ? e.message : "Не удалось удалить канал";
+			error = e instanceof Error ? e.message : "errors.deleteChannel";
 		}
 	}
 
@@ -289,8 +290,13 @@
 				};
 			});
 		} catch (e) {
-			error = e instanceof Error ? e.message : "Не удалось изменить статус канала";
+			error = e instanceof Error ? e.message : "errors.toggleChannelStatus";
 		}
+	}
+
+	$: {
+		$locale;
+		errorDisplay = error ? resolveI18nError(error) : null;
 	}
 </script>
 
@@ -298,31 +304,33 @@
   <header class="space-y-2">
     <span class="pill">{$t('common.channels')}</span>
     <p class="text-sm text-muted">
-      Управляйте привязками каналов, назначайте workflow и контролируйте доступы.
+      {$t('channelsPage.intro')}
     </p>
   </header>
 
   <div class="space-y-6">
     {#if error}
       <div class="glass-card p-4 bg-red-50 border-red-200">
-        <p class="text-sm text-red-600">{error}</p>
+        <p class="text-sm text-red-600">{errorDisplay}</p>
       </div>
     {/if}
 
     {#if loading}
       <div class="glass-card p-8 text-center">
-        <p class="text-sm text-muted">Загрузка коннекторов...</p>
+        <p class="text-sm text-muted">{$t('channelsPage.loadingConnectors')}</p>
       </div>
     {:else if filteredGroups.length === 0}
       <div class="glass-card p-8 text-center">
-        <p class="text-sm text-muted">Нет доступных коннекторов</p>
+        <p class="text-sm text-muted">{$t('channelsPage.noConnectors')}</p>
       </div>
     {:else}
       {#each filteredGroups as group (group.slug)}
       <article class="glass-card space-y-6">
         <div class="flex items-center justify-between">
           <div class="space-y-1">
-            <p class="text-sm uppercase tracking-wide text-muted">{group.description}</p>
+            <p class="text-sm uppercase tracking-wide text-muted">
+              {#if group.slug === 'telegram'}{$t('channelsPage.telegramSubtitle')}{/if}
+            </p>
             <h2 class="flex items-center gap-2 text-2xl font-semibold">
               <span class={group.color}>{group.icon}</span>
               {group.name}
@@ -345,7 +353,7 @@
                   class="btn-primary bg-surface text-text shadow-none hover:shadow-sm"
                   on:click={() => openChannelModal(group, entry)}
                 >
-                  Добавить канал
+                  {$t('channelsPage.addChannel')}
                 </button>
               </div>
 
@@ -369,7 +377,7 @@
                           <button
                             type="button"
                             class="icon-btn"
-                            aria-label="Редактировать канал"
+                            aria-label={$t('channelsPage.editChannelAria')}
                             on:click={() => openChannelModal(group, entry, channel)}
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
@@ -380,7 +388,7 @@
                           <button
                             type="button"
                             class="icon-btn"
-                            aria-label="Удалить канал"
+                            aria-label={$t('channelsPage.deleteChannelAria')}
                             on:click={() => removeChannel(group.slug, entry.id, channel.id)}
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
@@ -399,7 +407,7 @@
                             Muted
                           </span>
                         {:else}
-                          <span class="text-muted">Активен</span>
+                          <span class="text-muted">{$t('common.activeFemale')}</span>
                         {/if}
                         <button
                           type="button"
@@ -427,9 +435,11 @@
       <div class="modal">
         <div class="modal-header">
           <h3 class="text-lg font-semibold text-text">
-            {editingChannel ? 'Редактировать канал' : 'Добавить канал'} для {activeEntry.name}
+            {editingChannel ? $t('channelsPage.modalTitleEdit') : $t('channelsPage.modalTitleAdd')}
+            {' '}
+            {$t('channelsPage.modalFor')} {activeEntry.name}
           </h3>
-          <button type="button" class="modal-close" on:click={closeModal} aria-label="Закрыть">
+          <button type="button" class="modal-close" on:click={closeModal} aria-label={$t('common.close')}>
             ✕
           </button>
         </div>
@@ -437,45 +447,45 @@
         <div class="modal-body space-y-4">
           <div class="space-y-1">
             <label class="text-sm font-medium text-text" for="channel-name-input">
-              Название <span class="text-xs text-muted">(необязательно)</span>
+              {$t('common.nameOptional')}
             </label>
             <input
               id="channel-name-input"
               class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
               bind:value={channelNameInput}
-              placeholder="Например: Статус обновлений"
+              placeholder={$t('channelsPage.placeholderDisplayName')}
               autocomplete="off"
             />
           </div>
           <div class="space-y-1">
-            <label class="text-sm font-medium text-text" for="channel-input">Канал</label>
+            <label class="text-sm font-medium text-text" for="channel-input">{$t('common.channel')}</label>
             <input
               id="channel-input"
               class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
               bind:value={channelInput}
-              placeholder="Например: @status-updates или #marketing"
+              placeholder={$t('channelsPage.placeholderChannel')}
               autocomplete="off"
             />
           </div>
           <div class="space-y-1">
-            <label class="text-sm font-medium text-text" for="channel-description">Описание</label>
+            <label class="text-sm font-medium text-text" for="channel-description">{$t('common.description')}</label>
             <textarea
               id="channel-description"
               class="h-20 w-full resize-none rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
               bind:value={channelDescription}
-              placeholder="Кратко объясните назначение канала"
+              placeholder={$t('channelsPage.placeholderDescription')}
             ></textarea>
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn-secondary" on:click={closeModal}>Отменить</button>
+          <button type="button" class="btn-secondary" on:click={closeModal}>{$t('common.cancel')}</button>
           <button
             type="button"
             class="btn-primary"
             on:click={saveChannel}
             disabled={!channelInput.trim() || saving}
           >
-            {saving ? 'Сохранение...' : editingChannel ? 'Сохранить' : 'Добавить'}
+            {saving ? $t('common.saving') : editingChannel ? $t('common.save') : $t('common.add')}
           </button>
         </div>
       </div>

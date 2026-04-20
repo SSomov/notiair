@@ -2,6 +2,9 @@
 	import { draggable } from '@neodrag/svelte';
 	import type { DragEventData } from '@neodrag/svelte';
 	import { onMount, tick } from 'svelte';
+	import { get } from 'svelte/store';
+	import { locale, t } from '$lib/i18n';
+	import { resolveI18nError } from '$lib/i18n/resolveError';
 	import { page } from '$app/stores';
 	import {
 		saveWorkflow,
@@ -26,10 +29,10 @@
 		{ name: 'Manual' },
 	];
 	let triggerMenuOpen = false;
-	let selectedTrigger = 'Добавить триггер';
+	let selectedTrigger = '';
 
 	let workflowId: string | null = null;
-	let workflowName = 'Новый workflow';
+	let workflowName = '';
 	let editingName = false;
 	let isActive = false; // По умолчанию черновик
 	let saving = false;
@@ -120,26 +123,39 @@
 	];
 
 	// Базовый payload с предзаполненными переменными (только для фронта)
-	const defaultPayload = {
-		event_id: '7c3e16a5-9853-4910-a94f-7305a41e8ffe',
-		event_type: 'user.login',
-		occurred_at: '2026-01-29T22:05:53Z',
-		context: {
-			email: 'user8682177e@example.com',
-			phone: '+420000192749',
-		},
-		metadata: {
-			source: 'auth-service',
-		},
-		// Старые поля для обратной совместимости
-		userName: 'Иван',
-		userEmail: 'ivan@example.com',
-		message: 'Привет! Это тестовое сообщение',
-		timestamp: '2024-01-19 15:30:00',
-		workflowName: 'Новый workflow',
-		status: 'активен',
-		count: 42,
-	};
+	function getDefaultPayload() {
+		const tr = get(t);
+		return {
+			event_id: '7c3e16a5-9853-4910-a94f-7305a41e8ffe',
+			event_type: 'user.login',
+			occurred_at: '2026-01-29T22:05:53Z',
+			context: {
+				email: 'user8682177e@example.com',
+				phone: '+420000192749',
+			},
+			metadata: {
+				source: 'auth-service',
+			},
+			userName: tr('workflowBuilder.demo.userName'),
+			userEmail: 'ivan@example.com',
+			message: tr('workflowBuilder.demo.message'),
+			timestamp: '2024-01-19 15:30:00',
+			workflowName: tr('workflows.newWorkflow'),
+			status: tr('workflowBuilder.demo.status'),
+			count: 42,
+		};
+	}
+
+	let errorDisplay: string | null = null;
+	let templatePayloadErrorDisplay: string | null = null;
+
+	$: {
+		$locale;
+		errorDisplay = error ? resolveI18nError(error) : null;
+		templatePayloadErrorDisplay = templatePayloadError
+			? resolveI18nError(templatePayloadError)
+			: null;
+	}
 
 	function getConnectorType(connectorId: string | undefined): 'telegram' | 'slack' | 'smtp' | null {
 		if (!connectorId) return null;
@@ -266,7 +282,7 @@
 		const newChannel: CanvasNode = {
 			id: generateNodeId('channel'),
 			label: 'Channel',
-			description: 'Новый канал доставки',
+			description: get(t)('workflowBuilder.newChannelDelivery'),
 			variant: 'channel',
 			position: { x: 200 + channelCount * 280, y: 200 + channelCount * 80 },
 		};
@@ -310,7 +326,7 @@
 			console.log('Available channels loaded:', availableChannels.length);
 		} catch (e) {
 			console.error('Error loading channels:', e);
-			error = e instanceof Error ? e.message : 'Не удалось загрузить каналы';
+			error = e instanceof Error ? e.message : 'errors.loadChannels';
 			availableChannels = [];
 		} finally {
 			loadingChannels = false;
@@ -354,8 +370,9 @@
 		} else {
 			// Используем базовый payload по умолчанию
 			templateBody = node?.templateBody || '';
-			templatePayload = { ...defaultPayload };
-			templatePayloadJson = JSON.stringify(defaultPayload, null, 2);
+			const dp = getDefaultPayload();
+			templatePayload = { ...dp };
+			templatePayloadJson = JSON.stringify(dp, null, 2);
 		}
 		templateEditModalOpen = true;
 	}
@@ -411,7 +428,7 @@
 
 		const templateNodeId = editingTemplateNodeId;
 		if (!templateNodeId) {
-			templatePayloadError = 'Не выбран шаблон для редактирования';
+			templatePayloadError = 'errors.templateNotSelected';
 			return;
 		}
 
@@ -433,7 +450,7 @@
 			templatePayloadJson = JSON.stringify(triggerNode.triggerPayload, null, 2);
 			templatePayloadError = null;
 		} else {
-			templatePayloadError = 'Не найден триггер с payload';
+			templatePayloadError = 'errors.triggerPayloadNotFound';
 		}
 	}
 
@@ -446,13 +463,14 @@
 
 			nodes = nodes.map((node) => {
 				if (node.id === editingTemplateNodeId) {
+					const tr = get(t);
 					return {
 						...node,
 						templateBody: templateBody,
 						templatePayload: payload,
 						description: templateBody
-							? `Шаблон: ${templateBody.substring(0, 30)}${templateBody.length > 30 ? '...' : ''}`
-							: 'Новый шаблон',
+							? `${tr('workflowBuilder.templatePrefix')} ${templateBody.substring(0, 30)}${templateBody.length > 30 ? '...' : ''}`
+							: tr('workflowBuilder.newTemplate'),
 					};
 				}
 				return node;
@@ -460,7 +478,7 @@
 
 			closeTemplateEdit();
 		} catch (e) {
-			error = 'Неверный формат JSON в payload';
+			error = 'errors.invalidJsonPayload';
 			console.error('Invalid JSON:', e);
 		}
 	}
@@ -516,7 +534,7 @@
 		const newTemplate: CanvasNode = {
 			id: generateNodeId('template'),
 			label: 'Template',
-			description: 'Новый шаблон',
+			description: get(t)('workflowBuilder.newTemplate'),
 			variant: 'template',
 			position: { x: 150 + templateCount * 300, y: 180 + templateCount * 100 },
 		};
@@ -531,9 +549,9 @@
 			triggerPayload = node.triggerPayload;
 			triggerPayloadJson = JSON.stringify(triggerPayload, null, 2);
 		} else {
-			// Используем базовый payload по умолчанию
-			triggerPayload = { ...defaultPayload };
-			triggerPayloadJson = JSON.stringify(defaultPayload, null, 2);
+			const dp = getDefaultPayload();
+			triggerPayload = { ...dp };
+			triggerPayloadJson = JSON.stringify(dp, null, 2);
 		}
 		triggerPayloadModalOpen = true;
 	}
@@ -709,7 +727,7 @@
 
 			closeTriggerPayloadEdit();
 		} catch (e) {
-			error = 'Неверный формат JSON в payload';
+			error = 'errors.invalidJsonPayload';
 			console.error('Invalid JSON:', e);
 		}
 	}
@@ -718,12 +736,12 @@
 		const node = nodes.find((n) => n.id === nodeId);
 		if (!node || node.triggerPayload === undefined) return;
 		if (!workflowId) {
-			error = 'Сначала сохраните workflow';
+			error = 'errors.saveWorkflowFirst';
 			return;
 		}
 		const templateNode = nodes.find((n) => n.variant === 'template');
 		if (!templateNode) {
-			error = 'Добавьте шаблон в граф';
+			error = 'errors.addTemplateToGraph';
 			return;
 		}
 		const payload = node.triggerPayload || {};
@@ -741,7 +759,7 @@
 				payload: payload as Record<string, unknown>,
 			});
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Не удалось запустить';
+			error = e instanceof Error ? e.message : 'errors.runFailed';
 		} finally {
 			playingManualNodeId = null;
 		}
@@ -864,13 +882,17 @@
 
 	function saveName() {
 		if (!workflowName.trim()) {
-			workflowName = 'Новый workflow';
+			workflowName = get(t)('workflows.newWorkflow');
 		}
 		editingName = false;
 	}
 
 	onMount(async () => {
+		selectedTrigger = get(t)('workflowBuilder.addTrigger');
 		const id = $page.url.searchParams.get('id');
+		if (!id) {
+			workflowName = get(t)('workflows.newWorkflow');
+		}
 		if (id) {
 			workflowId = id;
 			try {
@@ -878,7 +900,7 @@
 				error = null;
 				const workflow = await getWorkflow(id);
 
-				workflowName = workflow.name || 'Новый workflow';
+				workflowName = workflow.name || get(t)('workflows.newWorkflow');
 				isActive = workflow.isActive || false;
 
 				// Преобразуем nodes из API формата в CanvasNode
@@ -933,7 +955,7 @@
 				edges = [...edges];
 				nodes = [...nodes];
 			} catch (e) {
-				error = e instanceof Error ? e.message : 'Не удалось загрузить workflow';
+				error = e instanceof Error ? e.message : 'errors.loadWorkflow';
 			} finally {
 				loading = false;
 			}
@@ -957,7 +979,7 @@
 
 			const workflowData = {
 				id: workflowId || crypto.randomUUID(),
-				name: workflowName.trim() || 'Новый workflow',
+				name: workflowName.trim() || get(t)('workflows.newWorkflow'),
 				description: '',
 				nodes: nodes.map((node) => ({
 					id: node.id,
@@ -1007,7 +1029,7 @@
 				workflowId = saved.id;
 			}
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Не удалось сохранить workflow';
+			error = e instanceof Error ? e.message : 'errors.saveWorkflow';
 		} finally {
 			saving = false;
 		}
@@ -1019,7 +1041,9 @@
 <section class="space-y-8 px-4 pb-12 pt-2 md:px-12 md:pt-4">
 	<header class="space-y-2">
 		<div class="flex items-center gap-3">
-			<span class="pill">{workflowId ? 'редактирование workflow' : 'новый workflow'}</span>
+			<span class="pill"
+				>{workflowId ? $t('workflowBuilder.badgeEdit') : $t('workflowBuilder.badgeNew')}</span
+			>
 			<div class="flex items-center gap-2">
 				{#if editingName}
 					<input
@@ -1035,8 +1059,8 @@
 					<button
 						type="button"
 						class="icon-btn"
-						title="Редактировать название"
-						aria-label="Редактировать название"
+						title={$t('workflowBuilder.editNameTitle')}
+						aria-label={$t('workflowBuilder.editNameAria')}
 						on:click={toggleEditName}
 					>
 						<svg
@@ -1061,17 +1085,18 @@
 					<div
 						class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-accent rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"
 					></div>
-					<span class="ml-2 text-sm text-muted">{isActive ? 'Активен' : 'Черновик'}</span>
+					<span class="ml-2 text-sm text-muted"
+						>{isActive ? $t('common.activeFemale') : $t('common.draft')}</span
+					>
 				</label>
 			</div>
 		</div>
 		<p class="max-w-2xl text-sm text-muted">
-			Добавьте триггеры, действия и каналы доставки. Каждую ноду можно связать линиями и
-			протестировать перед публикацией.
+			{$t('workflowBuilder.intro')}
 		</p>
 		{#if error}
 			<div class="rounded-lg border border-red-200 bg-red-50 p-3">
-				<p class="text-sm text-red-600">{error}</p>
+				<p class="text-sm text-red-600">{errorDisplay}</p>
 			</div>
 		{/if}
 	</header>
@@ -1114,14 +1139,14 @@
 					class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm"
 					on:click={addTemplateNode}
 				>
-					Добавить шаблонизатор
+					{$t('workflowBuilder.addTemplate')}
 				</button>
 				<button
 					type="button"
 					class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm"
 					on:click={addChannelNode}
 				>
-					Добавить канал
+					{$t('workflowBuilder.addChannel')}
 				</button>
 				<button
 					type="button"
@@ -1129,7 +1154,7 @@
 					on:click={saveWorkflowToAPI}
 					disabled={saving}
 				>
-					{saving ? 'Сохранение...' : 'Сохранить'}
+					{saving ? $t('common.saving') : $t('common.save')}
 				</button>
 			</div>
 		</div>
@@ -1142,7 +1167,7 @@
 			on:click={cancelConnection}
 			on:mousemove={handleWorkspaceMouseMove}
 			role="application"
-			aria-label="Рабочая область для создания workflow"
+			aria-label={$t('workflowBuilder.workspaceAria')}
 		>
 			<!-- SVG слой для линий -->
 			<svg class="edges-layer">
@@ -1227,7 +1252,7 @@
 					<button
 						type="button"
 						class="delete-btn"
-						aria-label="Удалить блок"
+						aria-label={$t('workflowBuilder.deleteBlockAria')}
 						on:click={(e) => deleteNode(node.id, e)}
 					>
 						<svg
@@ -1252,7 +1277,7 @@
 								class="connector right"
 								class:active={connecting?.nodeId === node.id && connecting?.port === 'right'}
 								on:click={(e) => handleConnectorClick(node.id, 'right', e)}
-								aria-label="Правая точка подключения"
+								aria-label={$t('workflowBuilder.connectorRightAria')}
 							></button>
 						{/if}
 						{#if node.variant !== 'trigger'}
@@ -1261,7 +1286,7 @@
 								class="connector left"
 								class:active={connecting?.nodeId === node.id && connecting?.port === 'left'}
 								on:click={(e) => handleConnectorClick(node.id, 'left', e)}
-								aria-label="Левая точка подключения"
+								aria-label={$t('workflowBuilder.connectorLeftAria')}
 							></button>
 						{/if}
 					</div>
@@ -1269,8 +1294,8 @@
 						<button
 							type="button"
 							class="edit-channel-btn"
-							aria-label="Выбрать канал"
-							title="Выбрать канал"
+							aria-label={$t('workflowBuilder.selectChannelAria')}
+							title={$t('workflowBuilder.selectChannelTitle')}
 							on:click={(e) => {
 								e.stopPropagation();
 								openChannelSelect(node.id);
@@ -1295,8 +1320,8 @@
 						<button
 							type="button"
 							class="edit-channel-btn"
-							aria-label="Редактировать шаблон"
-							title="Редактировать шаблон"
+							aria-label={$t('workflowBuilder.editTemplateAria')}
+							title={$t('workflowBuilder.editTemplateTitle')}
 							on:click={(e) => {
 								e.stopPropagation();
 								openTemplateEdit(node.id);
@@ -1321,8 +1346,8 @@
 						<button
 							type="button"
 							class="edit-channel-btn"
-							aria-label="Редактировать event types"
-							title="Редактировать event types"
+							aria-label={$t('workflowBuilder.editEventTypesAria')}
+							title={$t('workflowBuilder.editEventTypesTitle')}
 							on:click={(e) => {
 								e.stopPropagation();
 								openEventTypesEdit(node.id);
@@ -1348,8 +1373,8 @@
 							<button
 								type="button"
 								class="node-action-btn"
-								aria-label="Запустить"
-								title="Запустить"
+								aria-label={$t('workflowBuilder.runAria')}
+								title={$t('workflowBuilder.runTitle')}
 								disabled={playingManualNodeId === node.id}
 								on:click={(e) => {
 									e.stopPropagation();
@@ -1368,8 +1393,8 @@
 							<button
 								type="button"
 								class="node-action-btn"
-								aria-label="Редактировать payload"
-								title="Редактировать payload"
+								aria-label={$t('workflowBuilder.editPayloadAria')}
+								title={$t('workflowBuilder.editPayloadTitle')}
 								on:click={(e) => {
 									e.stopPropagation();
 									openTriggerPayloadEdit(node.id);
@@ -1424,8 +1449,8 @@
 	>
 		<div class="template-modal-content" on:click|stopPropagation>
 			<div class="template-modal-header">
-				<h2 class="template-modal-title">Редактировать шаблон</h2>
-				<button type="button" class="modal-close" on:click={closeTemplateEdit} aria-label="Закрыть">
+				<h2 class="template-modal-title">{$t('workflowBuilder.modalEditTemplate')}</h2>
+				<button type="button" class="modal-close" on:click={closeTemplateEdit} aria-label={$t('common.close')}>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
 						viewBox="0 0 24 24"
@@ -1443,25 +1468,29 @@
 				<!-- Левая панель: Payload -->
 				<div class="template-panel">
 					<div class="template-panel-header">
-						<h3 class="template-panel-title">Payload</h3>
+						<h3 class="template-panel-title">{$t('workflowBuilder.panelPayload')}</h3>
 						{#each [getAvailableTriggers()] as availableTriggers}
 							{#if availableTriggers.length === 0}
 								<button
 									type="button"
 									class="btn-secondary text-xs px-2 py-1"
 									disabled
-									title="Нет доступных триггеров"
+									title={$t('workflowBuilder.noTriggersTitle')}
 								>
-									Обновить из триггера
+									{$t('workflowBuilder.refreshFromTrigger')}
 								</button>
 							{:else if availableTriggers.length === 1}
 								<button
 									type="button"
 									class="btn-secondary text-xs px-2 py-1"
 									on:click={() => updatePayloadFromTrigger(availableTriggers[0].id)}
-									title="Обновить payload из триггера: {availableTriggers[0].label}"
+									title={$t('workflowBuilder.refreshFromTriggerTitle', {
+										label: availableTriggers[0].label,
+									})}
 								>
-									Обновить из {availableTriggers[0].label}
+									{$t('workflowBuilder.refreshFromTrigger')}
+									{' '}
+									{availableTriggers[0].label}
 								</button>
 							{:else}
 								<div class="flex gap-1">
@@ -1470,7 +1499,9 @@
 											type="button"
 											class="btn-secondary text-xs px-2 py-1"
 											on:click={() => updatePayloadFromTrigger(trigger.id)}
-											title="Обновить payload из триггера: {trigger.label}"
+											title={$t('workflowBuilder.refreshFromTriggerTitle', {
+												label: trigger.label,
+											})}
 										>
 											{trigger.label}
 										</button>
@@ -1482,7 +1513,7 @@
 					<div class="template-panel-content">
 						{#if templatePayloadError}
 							<div class="mb-2 p-2 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
-								{templatePayloadError}
+								{templatePayloadErrorDisplay}
 							</div>
 						{/if}
 						<textarea
@@ -1497,13 +1528,13 @@
 				<!-- Средняя панель: Template -->
 				<div class="template-panel">
 					<div class="template-panel-header">
-						<h3 class="template-panel-title">Template</h3>
+						<h3 class="template-panel-title">{$t('workflowBuilder.panelTemplate')}</h3>
 					</div>
 					<div class="template-panel-content">
 						<textarea
 							class="template-editor"
 							bind:value={templateBody}
-							placeholder={`Введите шаблон с переменными {{variable}}`}
+							placeholder={$t('workflowBuilder.templatePlaceholder')}
 							spellcheck="false"
 						></textarea>
 					</div>
@@ -1512,22 +1543,22 @@
 				<!-- Правая панель: Preview -->
 				<div class="template-panel">
 					<div class="template-panel-header">
-						<h3 class="template-panel-title">Preview</h3>
+						<h3 class="template-panel-title">{$t('workflowBuilder.panelPreview')}</h3>
 					</div>
 					<div class="template-panel-content template-preview">
 						{#if templatePreview}
 							<div class="template-preview-content">{templatePreview}</div>
 						{:else}
 							<div class="template-preview-placeholder">
-								Предпросмотр появится после ввода шаблона
+								{$t('workflowBuilder.previewPlaceholder')}
 							</div>
 						{/if}
 					</div>
 				</div>
 			</div>
 			<div class="template-modal-footer">
-				<button type="button" class="btn-secondary" on:click={closeTemplateEdit}>Отменить</button>
-				<button type="button" class="btn-primary" on:click={saveTemplate}>Сохранить</button>
+				<button type="button" class="btn-secondary" on:click={closeTemplateEdit}>{$t('common.cancel')}</button>
+				<button type="button" class="btn-primary" on:click={saveTemplate}>{$t('common.save')}</button>
 			</div>
 		</div>
 	</div>
@@ -1542,12 +1573,12 @@
 	>
 		<div class="modal-content" on:click|stopPropagation>
 			<div class="modal-header">
-				<h2 class="modal-title">Выберите канал</h2>
+				<h2 class="modal-title">{$t('workflowBuilder.modalSelectChannel')}</h2>
 				<button
 					type="button"
 					class="modal-close"
 					on:click={closeChannelSelect}
-					aria-label="Закрыть"
+					aria-label={$t('common.close')}
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
@@ -1564,9 +1595,9 @@
 			</div>
 			<div class="modal-body">
 				{#if loadingChannels}
-					<p class="text-sm text-muted">Загрузка каналов...</p>
+					<p class="text-sm text-muted">{$t('workflowBuilder.loadingChannels')}</p>
 				{:else if availableChannels.length === 0}
-					<p class="text-sm text-muted">Нет доступных каналов</p>
+					<p class="text-sm text-muted">{$t('workflowBuilder.noChannels')}</p>
 				{:else}
 					<div class="channel-list">
 						{#each availableChannels as channel}
@@ -1578,7 +1609,7 @@
 									{/if}
 								</div>
 								{#if channel.muted}
-									<span class="channel-muted-badge">Заглушен</span>
+									<span class="channel-muted-badge">{$t('workflowBuilder.channelMuted')}</span>
 								{/if}
 							</button>
 						{/each}
@@ -1598,12 +1629,12 @@
 	>
 		<div class="modal-content" on:click|stopPropagation>
 			<div class="modal-header">
-				<h2 class="modal-title">Редактировать payload</h2>
+				<h2 class="modal-title">{$t('workflowBuilder.modalEditPayload')}</h2>
 				<button
 					type="button"
 					class="modal-close"
 					on:click={closeTriggerPayloadEdit}
-					aria-label="Закрыть"
+					aria-label={$t('common.close')}
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
@@ -1629,9 +1660,9 @@
 			</div>
 			<div class="template-modal-footer">
 				<button type="button" class="btn-secondary" on:click={closeTriggerPayloadEdit}
-					>Отменить</button
+					>{$t('common.cancel')}</button
 				>
-				<button type="button" class="btn-primary" on:click={saveTriggerPayload}>Сохранить</button>
+				<button type="button" class="btn-primary" on:click={saveTriggerPayload}>{$t('common.save')}</button>
 			</div>
 		</div>
 	</div>
@@ -1646,12 +1677,12 @@
 	>
 		<div class="modal-content event-types-modal" on:click|stopPropagation>
 			<div class="modal-header">
-				<h2 class="modal-title">Выберите event types</h2>
+				<h2 class="modal-title">{$t('workflowBuilder.modalEventTypesTitle')}</h2>
 				<button
 					type="button"
 					class="modal-close"
 					on:click={closeEventTypesEdit}
-					aria-label="Закрыть"
+					aria-label={$t('common.close')}
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
@@ -1674,7 +1705,7 @@
 				<div class="flex flex-col">
 					<!-- Список доступных event types -->
 					<div class="mb-4">
-						<h3 class="text-sm font-medium mb-2">Доступные event types:</h3>
+						<h3 class="text-sm font-medium mb-2">{$t('workflowBuilder.availableEventTypes')}</h3>
 						<div class="space-y-2 max-h-60 overflow-y-auto">
 							{#each availableEventTypes as eventType}
 								<label
@@ -1694,7 +1725,7 @@
 
 					<!-- Добавление нового event type -->
 					<div class="border-t pt-4">
-						<h3 class="text-sm font-medium mb-2">Добавить новый event type:</h3>
+						<h3 class="text-sm font-medium mb-2">{$t('workflowBuilder.addEventType')}</h3>
 						<div class="flex gap-2">
 							<input
 								type="text"
@@ -1709,7 +1740,7 @@
 								on:click={addNewEventType}
 								disabled={!newEventType.trim()}
 							>
-								Add
+								{$t('workflowBuilder.addButton')}
 							</button>
 						</div>
 					</div>
@@ -1718,7 +1749,7 @@
 					{#if selectedEventTypes.length > 0}
 						<div class="mt-4 border-t pt-4">
 							<h3 class="text-sm font-medium mb-2">
-								Выбранные event types ({selectedEventTypes.length}):
+								{$t('workflowBuilder.selectedEventTypes', { count: selectedEventTypes.length })}
 							</h3>
 							<div class="flex flex-wrap gap-2">
 								{#each selectedEventTypes as eventType}
@@ -1730,7 +1761,7 @@
 											type="button"
 											class="ml-1 hover:text-accent/70"
 											on:click={() => toggleEventType(eventType)}
-											aria-label="Удалить"
+											aria-label={$t('workflowBuilder.removeEventTypeAria')}
 										>
 											×
 										</button>
@@ -1743,13 +1774,13 @@
 
 				<!-- Правая колонка: Последние сообщения -->
 				<div class="flex flex-col border-l pl-4">
-					<h3 class="text-sm font-medium mb-2">Последние сообщения (макс. 10):</h3>
+					<h3 class="text-sm font-medium mb-2">{$t('workflowBuilder.recentMessages')}</h3>
 					{#if loadingMessages}
-						<div class="text-sm text-muted">Загрузка...</div>
+						<div class="text-sm text-muted">{$t('common.loading')}</div>
 					{:else if selectedEventTypes.length === 0}
-						<div class="text-sm text-muted">Выберите event types для просмотра сообщений</div>
+						<div class="text-sm text-muted">{$t('workflowBuilder.selectEventTypesHint')}</div>
 					{:else if recentMessages.length === 0}
-						<div class="text-sm text-muted">Нет сообщений для выбранных event types</div>
+						<div class="text-sm text-muted">{$t('workflowBuilder.noMessagesForFilters')}</div>
 					{:else}
 						<div class="space-y-2 max-h-[60vh] overflow-y-auto">
 							{#each recentMessages as message}
@@ -1766,8 +1797,8 @@
 				</div>
 			</div>
 			<div class="template-modal-footer">
-				<button type="button" class="btn-secondary" on:click={closeEventTypesEdit}>Отменить</button>
-				<button type="button" class="btn-primary" on:click={saveEventTypes}>Сохранить</button>
+				<button type="button" class="btn-secondary" on:click={closeEventTypesEdit}>{$t('common.cancel')}</button>
+				<button type="button" class="btn-primary" on:click={saveEventTypes}>{$t('common.save')}</button>
 			</div>
 		</div>
 	</div>

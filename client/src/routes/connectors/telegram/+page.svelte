@@ -3,6 +3,9 @@
 	import { page } from "$app/stores";
 	import { resolve } from "$app/paths";
 	import { getLocaleFromPath, addLocaleToPath } from "$lib/i18n/utils";
+	import { get } from "svelte/store";
+	import { locale, t } from "$lib/i18n";
+	import { resolveI18nError } from "$lib/i18n/resolveError";
 	import {
 		listTelegramTokens,
 		createTelegramToken,
@@ -15,6 +18,7 @@
 	let tokens: TelegramToken[] = [];
 	let loading = true;
 	let error: string | null = null;
+	let errorDisplay: string | null = null;
 
 	let tokenModalOpen = false;
 	let editingToken: TelegramToken | null = null;
@@ -45,7 +49,7 @@
 			const data = await listTelegramTokens();
 			tokens = Array.isArray(data) ? data : [];
 		} catch (e) {
-			error = e instanceof Error ? e.message : "Не удалось загрузить токены";
+			error = e instanceof Error ? e.message : "errors.loadTokens";
 			tokens = [];
 		} finally {
 			loading = false;
@@ -97,21 +101,25 @@
 
 			closeTokenModal();
 		} catch (e) {
-			error = e instanceof Error ? e.message : "Не удалось сохранить токен";
+			error = e instanceof Error
+				? e.message
+				: editingToken
+					? "errors.updateToken"
+					: "errors.createToken";
 		} finally {
 			saving = false;
 		}
 	}
 
 	async function deleteToken(id: string) {
-		if (!confirm("Вы уверены, что хотите удалить этот токен?")) return;
+		if (!confirm(get(t)("telegramConnectorPage.confirmDelete"))) return;
 
 		try {
 			error = null;
 			await deleteTelegramToken(id);
 			tokens = tokens.filter((token) => token.id !== id);
 		} catch (e) {
-			error = e instanceof Error ? e.message : "Не удалось удалить токен";
+			error = e instanceof Error ? e.message : "errors.deleteToken";
 		}
 	}
 
@@ -121,8 +129,13 @@
 			const updated = await toggleTelegramTokenActive(token.id, !token.isActive);
 			tokens = tokens.map((t) => (t.id === token.id ? updated : t));
 		} catch (e) {
-			error = e instanceof Error ? e.message : "Не удалось изменить статус токена";
+			error = e instanceof Error ? e.message : "errors.toggleTokenStatus";
 		}
+	}
+
+	$: {
+		$locale;
+		errorDisplay = error ? resolveI18nError(error) : null;
 	}
 </script>
 
@@ -134,38 +147,38 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
         </svg>
       </a>
-      <span class="pill">telegram connectors</span>
+      <span class="pill">{$t('telegramConnectorPage.pill')}</span>
     </div>
     <p class="text-sm text-muted max-w-2xl">
-      Управляйте токенами ботов Telegram для маршрутизации уведомлений.
+      {$t('telegramConnectorPage.intro')}
     </p>
   </header>
 
   <div class="space-y-4">
     <div class="flex items-center justify-between">
-      <h2 class="text-lg font-semibold text-text">Токены Telegram</h2>
+      <h2 class="text-lg font-semibold text-text">{$t('telegramConnectorPage.title')}</h2>
       <button
         type="button"
         class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm"
         on:click={() => openTokenModal()}
       >
-        Добавить токен
+        {$t('telegramConnectorPage.addToken')}
       </button>
     </div>
 
     {#if error}
       <div class="glass-card p-4 bg-red-50 border-red-200">
-        <p class="text-sm text-red-600">{error}</p>
+        <p class="text-sm text-red-600">{errorDisplay}</p>
       </div>
     {/if}
 
     {#if loading}
       <div class="glass-card p-8 text-center">
-        <p class="text-sm text-muted">Загрузка токенов...</p>
+        <p class="text-sm text-muted">{$t('telegramConnectorPage.loading')}</p>
       </div>
     {:else if tokens.length === 0}
       <div class="glass-card p-8 text-center">
-        <p class="text-sm text-muted">Нет добавленных токенов</p>
+        <p class="text-sm text-muted">{$t('telegramConnectorPage.empty')}</p>
       </div>
     {:else}
       <div class="grid gap-4 md:grid-cols-2">
@@ -175,7 +188,7 @@
               <div class="flex-1 space-y-2">
                 <div class="space-y-1">
                   <div class="flex items-center justify-between">
-                    <p class="font-semibold text-text">{token.name || "Без названия"}</p>
+                    <p class="font-semibold text-text">{token.name || $t('common.noName')}</p>
                     <label class="relative inline-flex items-center cursor-pointer">
                       <input
                         type="checkbox"
@@ -184,7 +197,7 @@
                         class="sr-only peer"
                       />
                       <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-accent rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
-                      <span class="ml-2 text-xs text-muted">{token.isActive ? "Активен" : "Неактивен"}</span>
+                      <span class="ml-2 text-xs text-muted">{token.isActive ? $t('common.activeFemale') : $t('common.inactive')}</span>
                     </label>
                   </div>
                   <span class="text-xs text-muted font-mono">{maskSecret(token.secret)}</span>
@@ -197,8 +210,8 @@
                 <button
                   type="button"
                   class="icon-btn"
-                  title="Редактировать токен"
-                  aria-label="Редактировать токен"
+                  title={$t('telegramConnectorPage.editToken')}
+                  aria-label={$t('telegramConnectorPage.editToken')}
                   on:click={() => openTokenModal(token)}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
@@ -209,8 +222,8 @@
                 <button
                   type="button"
                   class="icon-btn"
-                  title="Удалить токен"
-                  aria-label="Удалить токен"
+                  title={$t('telegramConnectorPage.deleteToken')}
+                  aria-label={$t('telegramConnectorPage.deleteToken')}
                   on:click={() => deleteToken(token.id)}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
@@ -235,52 +248,52 @@
       <div class="modal">
         <div class="modal-header">
           <h3 class="text-lg font-semibold text-text">
-            {editingToken ? 'Редактировать токен' : 'Добавить токен Telegram'}
+            {editingToken ? $t('telegramConnectorPage.modalEdit') : $t('telegramConnectorPage.modalAdd')}
           </h3>
-          <button type="button" class="modal-close" on:click={closeTokenModal} aria-label="Закрыть">
+          <button type="button" class="modal-close" on:click={closeTokenModal} aria-label={$t('common.close')}>
             ✕
           </button>
         </div>
         <div class="modal-body space-y-4">
           <div class="space-y-1">
-            <label class="text-sm font-medium text-text" for="name-input">Название</label>
+            <label class="text-sm font-medium text-text" for="name-input">{$t('common.name')}</label>
             <input
               id="name-input"
               class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
               bind:value={nameInput}
-              placeholder="Например: Основной бот"
+              placeholder={$t('telegramConnectorPage.namePlaceholder')}
               autocomplete="off"
             />
           </div>
           <div class="space-y-1">
-            <label class="text-sm font-medium text-text" for="secret-input">Bot API Token</label>
+            <label class="text-sm font-medium text-text" for="secret-input">{$t('telegramConnectorPage.secretLabel')}</label>
             <input
               id="secret-input"
               class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
               bind:value={secretInput}
-              placeholder="Введите Bot API Token"
+              placeholder={$t('telegramConnectorPage.secretPlaceholder')}
               autocomplete="off"
             />
           </div>
           <div class="space-y-1">
-            <label class="text-sm font-medium text-text" for="comment-input">Комментарий</label>
+            <label class="text-sm font-medium text-text" for="comment-input">{$t('common.comment')}</label>
             <textarea
               id="comment-input"
               class="h-24 w-full resize-none rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
               bind:value={commentInput}
-              placeholder="Например: основной бот для статуса заказов"
+              placeholder={$t('telegramConnectorPage.commentPlaceholder')}
             ></textarea>
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn-secondary" on:click={closeTokenModal}>Отменить</button>
+          <button type="button" class="btn-secondary" on:click={closeTokenModal}>{$t('common.cancel')}</button>
           <button
             type="button"
             class="btn-primary"
             on:click={saveToken}
             disabled={!secretInput.trim() || !nameInput.trim() || saving}
           >
-            {saving ? 'Сохранение...' : editingToken ? 'Сохранить' : 'Добавить'}
+            {saving ? $t('common.saving') : editingToken ? $t('common.save') : $t('common.add')}
           </button>
         </div>
       </div>

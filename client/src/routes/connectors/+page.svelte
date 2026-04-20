@@ -4,6 +4,7 @@
 	import { resolve } from "$app/paths";
 	import { listTelegramTokens, listSmtpAccounts, type TelegramToken } from "$lib/api";
 	import { getLocaleFromPath, addLocaleToPath } from "$lib/i18n/utils";
+	import { t } from "$lib/i18n";
 	import TelegramIcon from "$lib/components/TelegramIcon.svelte";
 
 	$: loc = getLocaleFromPath($page.url.pathname);
@@ -13,10 +14,8 @@
 	type Connector = {
 		slug: "telegram" | "slack" | "smtp";
 		name: string;
-		description: string;
 		badge: string;
 		color: string;
-		placeholder: string;
 		comingSoon?: boolean;
 	};
 
@@ -24,33 +23,27 @@
 	let smtpAccounts: Awaited<ReturnType<typeof listSmtpAccounts>> = [];
 	let loading = true;
 
-const connectors: Connector[] = [
-	{
-		slug: "telegram",
-		name: "Telegram",
-		description: "Токены ботов и канала для маршрутизации.",
-		badge: "messenger",
-		color: "text-accent",
-		placeholder: "Введите Bot API Token",
-	},
-	{
-		slug: "slack",
-		name: "Slack",
-		description: "Вебхуки и workspace токены для уведомлений.",
-		badge: "chat",
-		color: "text-warning",
-		placeholder: "Введите Slack webhook URL или token",
-		comingSoon: true,
-	},
-	{
-		slug: "smtp",
-		name: "SMTP",
-		description: "SMTP credentials для доставки писем.",
-		badge: "mail",
-		color: "text-positive",
-		placeholder: "Введите SMTP connection string",
-	},
-];
+	const connectors: Connector[] = [
+		{
+			slug: "telegram",
+			name: "Telegram",
+			badge: "messenger",
+			color: "text-accent",
+		},
+		{
+			slug: "slack",
+			name: "Slack",
+			badge: "chat",
+			color: "text-warning",
+			comingSoon: true,
+		},
+		{
+			slug: "smtp",
+			name: "SMTP",
+			badge: "mail",
+			color: "text-positive",
+		},
+	];
 
 type Note = {
 	id: string;
@@ -139,10 +132,9 @@ function deleteNote(slug: "telegram" | "slack", id: string) {
 
 <section class="space-y-8 px-4 pb-12 pt-2 md:px-12 md:pt-4">
   <header class="space-y-2">
-    <span class="pill">connectors</span>
+    <span class="pill">{$t('common.connectors')}</span>
     <p class="text-sm text-muted max-w-2xl">
-      Управляйте интеграциями NotiAir: подключайте каналы, масштабируйте доставку и переиспользуйте
-      общие настройки сервисов.
+      {$t('connectorsPage.intro')}
     </p>
   </header>
 
@@ -157,14 +149,14 @@ function deleteNote(slug: "telegram" | "slack", id: string) {
             </div>
             <span class="pill capitalize">{connector.badge}</span>
           </div>
-          <p class="text-sm text-muted">{connector.description}</p>
+          <p class="text-sm text-muted">{$t('connectorsPage.cards.telegram.description')}</p>
           {#if !loading}
             <div class="text-sm text-muted">
-              <span class="font-medium text-text">{activeTelegramCount}</span>
               {#if totalTelegramCount > 0}
-                <span> из {totalTelegramCount} активны</span>
+                {$t('connectorsPage.activeOfTotal', { active: activeTelegramCount, total: totalTelegramCount })}
               {:else}
-                <span> активных коннекторов</span>
+                <span class="font-medium text-text">{activeTelegramCount}</span>
+                <span>{$t('connectorsPage.activeConnectorsHint')}</span>
               {/if}
             </div>
           {/if}
@@ -184,8 +176,8 @@ function deleteNote(slug: "telegram" | "slack", id: string) {
                       <button
                         type="button"
                         class="icon-btn"
-                        title="Редактировать"
-                        aria-label="Редактировать"
+                        title={$t('common.edit')}
+                        aria-label={$t('common.edit')}
                         on:click|stopPropagation={() => editNote("telegram", note)}
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
@@ -196,8 +188,8 @@ function deleteNote(slug: "telegram" | "slack", id: string) {
                       <button
                         type="button"
                         class="icon-btn"
-                        title="Удалить"
-                        aria-label="Удалить"
+                        title={$t('common.delete')}
+                        aria-label={$t('common.delete')}
                         on:click|stopPropagation={() => deleteNote("telegram", note.id)}
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
@@ -221,14 +213,14 @@ function deleteNote(slug: "telegram" | "slack", id: string) {
             <h2 class={`text-xl font-semibold ${connector.color}`}>{connector.name}</h2>
             <span class="pill capitalize">{connector.badge}</span>
           </div>
-          <p class="text-sm text-muted">{connector.description}</p>
+          <p class="text-sm text-muted">{$t('connectorsPage.cards.smtp.description')}</p>
           {#if !loading}
             <div class="text-sm text-muted">
-              <span class="font-medium text-text">{activeSmtpCount}</span>
               {#if totalSmtpCount > 0}
-                <span> из {totalSmtpCount} активны</span>
+                {$t('connectorsPage.activeOfTotal', { active: activeSmtpCount, total: totalSmtpCount })}
               {:else}
-                <span> активных аккаунтов</span>
+                <span class="font-medium text-text">{activeSmtpCount}</span>
+                <span>{$t('connectorsPage.activeAccountsHint')}</span>
               {/if}
             </div>
           {/if}
@@ -239,7 +231,7 @@ function deleteNote(slug: "telegram" | "slack", id: string) {
             <h2 class={`text-xl font-semibold ${connector.color}`}>{connector.name}</h2>
             <span class="pill capitalize">{connector.badge}</span>
           </div>
-          <p class="text-sm text-muted">{connector.description}</p>
+          <p class="text-sm text-muted">{$t('connectorsPage.cards.slack.description')}</p>
 
           <div class="space-y-3">
             <button
@@ -248,7 +240,7 @@ function deleteNote(slug: "telegram" | "slack", id: string) {
               disabled={connector.comingSoon}
               on:click={() => connector.comingSoon || openModal(connector)}
             >
-              {connector.comingSoon ? 'Coming soon' : 'Добавить'}
+              {connector.comingSoon ? $t('common.comingSoon') : $t('connectorsPage.addConnector')}
             </button>
 
           {#if notes.slack.length > 0}
@@ -265,8 +257,8 @@ function deleteNote(slug: "telegram" | "slack", id: string) {
                     <button
                       type="button"
                       class="icon-btn"
-                      title="Редактировать"
-                      aria-label="Редактировать"
+                      title={$t('common.edit')}
+                      aria-label={$t('common.edit')}
                       disabled={connector.comingSoon}
                       on:click={() => connector.comingSoon || editNote('slack', note)}
                     >
@@ -278,8 +270,8 @@ function deleteNote(slug: "telegram" | "slack", id: string) {
                     <button
                       type="button"
                       class="icon-btn"
-                      title="Удалить"
-                      aria-label="Удалить"
+                      title={$t('common.delete')}
+                      aria-label={$t('common.delete')}
                       disabled={connector.comingSoon}
                       on:click={() => connector.comingSoon || deleteNote('slack', note.id)}
                     >
@@ -307,41 +299,43 @@ function deleteNote(slug: "telegram" | "slack", id: string) {
     <div class="modal-wrap" role="dialog" aria-modal="true">
       <div class="modal">
         <div class="modal-header">
-          <h3 class="text-lg font-semibold text-text">Добавить {current.name}</h3>
-          <button type="button" class="modal-close" on:click={closeModal} aria-label="Закрыть">
+          <h3 class="text-lg font-semibold text-text">{$t('connectorsPage.addConnectorTitle', { name: current.name })}</h3>
+          <button type="button" class="modal-close" on:click={closeModal} aria-label={$t('common.close')}>
             ✕
           </button>
         </div>
         <div class="modal-body space-y-4">
           <div class="space-y-1">
-            <label class="text-sm font-medium text-text" for="secret-input">Секрет / токен</label>
+            <label class="text-sm font-medium text-text" for="secret-input">{$t('common.secretOrToken')}</label>
             <input
               id="secret-input"
               class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
               bind:value={secretInput}
-              placeholder={current.placeholder}
+              placeholder={current.slug === 'telegram'
+                ? $t('connectorsPage.cards.telegram.placeholder')
+                : $t('connectorsPage.cards.slack.placeholder')}
               autocomplete="off"
             />
           </div>
           <div class="space-y-1">
-            <label class="text-sm font-medium text-text" for="comment-input">Комментарий</label>
+            <label class="text-sm font-medium text-text" for="comment-input">{$t('common.comment')}</label>
             <textarea
               id="comment-input"
               class="h-24 w-full resize-none rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
               bind:value={commentInput}
-              placeholder="Например: основной бот для статуса заказов"
+              placeholder={$t('connectorsPage.commentPlaceholder')}
             ></textarea>
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn-secondary" on:click={closeModal}>Отменить</button>
+          <button type="button" class="btn-secondary" on:click={closeModal}>{$t('common.cancel')}</button>
           <button
             type="button"
             class="btn-primary"
             on:click={saveConnector}
             disabled={!secretInput.trim()}
           >
-            Сохранить
+            {$t('connectorsPage.save')}
         </button>
         </div>
       </div>
