@@ -75,6 +75,28 @@
 	let mousePosition: { x: number; y: number } | null = null;
 	let workspaceElement: HTMLDivElement;
 	let workspaceExpanded = false;
+	let workspaceZoom = 1;
+	const WORKSPACE_ZOOM_MIN = 0.25;
+	const WORKSPACE_ZOOM_MAX = 2;
+	const WORKSPACE_ZOOM_STEP = 0.1;
+
+	const handleWorkspaceZoomIn = () => {
+		workspaceZoom = Math.min(
+			WORKSPACE_ZOOM_MAX,
+			Math.round((workspaceZoom + WORKSPACE_ZOOM_STEP) * 100) / 100
+		);
+	};
+
+	const handleWorkspaceZoomOut = () => {
+		workspaceZoom = Math.max(
+			WORKSPACE_ZOOM_MIN,
+			Math.round((workspaceZoom - WORKSPACE_ZOOM_STEP) * 100) / 100
+		);
+	};
+
+	const handleWorkspaceZoomReset = () => {
+		workspaceZoom = 1;
+	};
 
 	// Состояние для выбора канала
 	let channelSelectModalOpen = false;
@@ -875,8 +897,8 @@
 	}
 
 	$: edgePaths = (() => {
-		// Явно используем nodes, edges и windowResizeTrigger для реактивности
-		const _ = nodes.length + edges.length + windowResizeTrigger;
+		// Явно используем nodes, edges, windowResizeTrigger и workspaceZoom для реактивности
+		const _ = nodes.length + edges.length + windowResizeTrigger + workspaceZoom;
 		return edges
 			.map((edge) => {
 				const fromPos = getConnectorPosition(edge.from.nodeId, edge.from.port);
@@ -898,6 +920,7 @@
 	// Путь для активного соединения (следует за курсором)
 	// Зависит от nodes, connecting и mousePosition
 	$: tempPath = (() => {
+		void workspaceZoom;
 		if (!connecting) return null;
 
 		const fromPos = getConnectorPosition(connecting.nodeId, connecting.port);
@@ -1197,6 +1220,39 @@
 						? $t('workflowBuilder.collapseWorkspace')
 						: $t('workflowBuilder.expandWorkspace')}
 				</button>
+				<div
+					class="flex items-center gap-1 border-l border-border pl-3 ml-0.5"
+					role="group"
+					aria-label={$t('workflowBuilder.zoomControlsAria')}
+				>
+					<button
+						type="button"
+						class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm min-w-[2.25rem] px-2"
+						on:click={handleWorkspaceZoomOut}
+						disabled={workspaceZoom <= WORKSPACE_ZOOM_MIN}
+						aria-label={$t('workflowBuilder.zoomOutAria')}
+					>
+						−
+					</button>
+					<button
+						type="button"
+						class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm px-2.5"
+						on:click={handleWorkspaceZoomReset}
+						disabled={workspaceZoom === 1}
+						aria-label={$t('workflowBuilder.zoomResetAria')}
+					>
+						{$t('workflowBuilder.zoomReset')}
+					</button>
+					<button
+						type="button"
+						class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm min-w-[2.25rem] px-2"
+						on:click={handleWorkspaceZoomIn}
+						disabled={workspaceZoom >= WORKSPACE_ZOOM_MAX}
+						aria-label={$t('workflowBuilder.zoomInAria')}
+					>
+						+
+					</button>
+				</div>
 			</div>
 
 			<div class="flex items-center gap-3">
@@ -1235,6 +1291,10 @@
 			role="application"
 			aria-label={$t('workflowBuilder.workspaceAria')}
 		>
+			<div
+				class="workspace-canvas-scale"
+				style="transform: scale({workspaceZoom}); transform-origin: 0 0; width: calc(100% / {workspaceZoom}); min-height: calc(580px / {workspaceZoom});"
+			>
 			<!-- SVG слой для линий -->
 			<svg class="edges-layer">
 				{#each edgePaths as { id, path }}
@@ -1520,6 +1580,7 @@
 					</p>
 				</div>
 			{/each}
+			</div>
 		</div>
 	</div>
 </section>
@@ -1944,6 +2005,10 @@
 		z-index: 1;
 		min-height: 580px;
 		padding: 3rem 2rem;
+	}
+
+	.workspace-canvas-scale {
+		position: relative;
 	}
 
 	.node {

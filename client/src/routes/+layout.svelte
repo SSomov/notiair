@@ -130,7 +130,7 @@
 	</div>
 </header>
 
-<main class="px-4 pb-12 pt-6 md:px-12 md:pt-10">
+<main class="md:px-12 md:pt-10">
 	<div class="mx-auto w-full max-w-6xl space-y-8">
 		<slot />
 	</div>
