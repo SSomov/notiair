@@ -75,8 +75,7 @@ notiair/
             ├── templates/ # Управление шаблонами
             ├── workflows/ # Управление workflow
             ├── queues/    # Мониторинг очередей
-            ├── channels/  # Управление каналами
-            └── connectors/# Управление коннекторами
+            └── connectors/# Коннекторы (каналы Telegram — в connectors/telegram)
 ```
 
 ## Быстрый старт

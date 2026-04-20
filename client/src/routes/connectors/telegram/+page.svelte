@@ -265,6 +265,26 @@
 		}
 	}
 
+	async function handleToggleMute(tokenId: string, ch: Channel) {
+		try {
+			error = null;
+			const updated = await updateChannel(ch.id, {
+				name: ch.name,
+				displayName: ch.displayName,
+				description: ch.description,
+				muted: !ch.muted,
+			});
+			channelsByTokenId = {
+				...channelsByTokenId,
+				[tokenId]: (channelsByTokenId[tokenId] || []).map((c) =>
+					c.id === ch.id ? updated : c,
+				),
+			};
+		} catch (e) {
+			error = e instanceof Error ? e.message : "errors.toggleChannelStatus";
+		}
+	}
+
 	$: {
 		$locale;
 		errorDisplay = error ? resolveI18nError(error) : null;
@@ -469,6 +489,22 @@
                             </svg>
                           </button>
                         </div>
+                      </div>
+                      <div class="mt-3 flex items-center justify-between gap-2 text-xs">
+                        {#if ch.muted}
+                          <span class="inline-flex items-center rounded-full bg-border/70 px-2.5 py-1 font-semibold uppercase tracking-wide text-text">
+                            {$t('common.muted')}
+                          </span>
+                        {:else}
+                          <span class="text-muted">{$t('common.activeFemale')}</span>
+                        {/if}
+                        <button
+                          type="button"
+                          class="inline-flex items-center justify-center gap-1 rounded-lg border border-border px-3 py-1 font-semibold text-muted transition hover:border-primary hover:text-primary"
+                          on:click={() => handleToggleMute(token.id, ch)}
+                        >
+                          {ch.muted ? $t('common.unmute') : $t('common.mute')}
+                        </button>
                       </div>
                     </div>
                   {/each}

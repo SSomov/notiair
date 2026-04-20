@@ -25,7 +25,6 @@
 
 	$: homeHref = resolve(currentLocale === 'ru' ? '/ru' : '/');
 	$: connectorsHref = resolve(currentLocale === 'ru' ? '/ru/connectors' : '/connectors');
-	$: channelsHref = resolve(currentLocale === 'ru' ? '/ru/channels' : '/channels');
 	$: workflowsHref = resolve(currentLocale === 'ru' ? '/ru/workflows' : '/workflows');
 	$: apiKeysHref = resolve(
 		currentLocale === 'ru' ? '/ru/settings/api-keys' : '/settings/api-keys'
@@ -74,10 +73,6 @@
 			<a
 				href={connectorsHref}
 				class="btn-primary hidden md:inline-flex">{$t('common.connectors')}</a
-			>
-			<a
-				href={channelsHref}
-				class="btn-primary hidden md:inline-flex">{$t('common.channels')}</a
 			>
 			<a
 				href={workflowsHref}
