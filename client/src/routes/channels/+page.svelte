@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
+	import { t } from "$lib/i18n";
 	import {
 		listTelegramTokens,
 		listChannels,
@@ -295,7 +296,7 @@
 
 <section class="space-y-8 px-4 pb-12 pt-2 md:px-12 md:pt-4">
   <header class="space-y-2">
-    <span class="pill">channels</span>
+    <span class="pill">{$t('common.channels')}</span>
     <p class="text-sm text-muted">
       Управляйте привязками каналов, назначайте workflow и контролируйте доступы.
     </p>
