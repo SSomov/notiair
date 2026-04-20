@@ -115,6 +115,72 @@ export async function toggleTelegramTokenActive(
 	return res.json();
 }
 
+export type SmtpAccount = {
+	id: string;
+	name: string;
+	host: string;
+	port: number;
+	username: string;
+	password: string;
+	from: string;
+	comment: string;
+	useTls: boolean;
+	useStartTls: boolean;
+	isActive: boolean;
+};
+
+export async function listSmtpAccounts(): Promise<SmtpAccount[]> {
+	const res = await fetch(`${API_URL}/connectors/smtp`);
+	if (!res.ok) throw new Error("Не удалось загрузить SMTP-аккаунты");
+	const data = await res.json();
+	return Array.isArray(data) ? data : [];
+}
+
+export async function createSmtpAccount(
+	payload: Omit<SmtpAccount, "id" | "isActive">,
+): Promise<SmtpAccount> {
+	const res = await fetch(`${API_URL}/connectors/smtp`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(payload),
+	});
+	if (!res.ok) throw new Error("Не удалось создать SMTP-аккаунт");
+	return res.json();
+}
+
+export async function updateSmtpAccount(
+	id: string,
+	payload: Omit<SmtpAccount, "id" | "isActive">,
+): Promise<SmtpAccount> {
+	const res = await fetch(`${API_URL}/connectors/smtp/${id}`, {
+		method: "PUT",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(payload),
+	});
+	if (!res.ok) throw new Error("Не удалось обновить SMTP-аккаунт");
+	return res.json();
+}
+
+export async function deleteSmtpAccount(id: string): Promise<void> {
+	const res = await fetch(`${API_URL}/connectors/smtp/${id}`, {
+		method: "DELETE",
+	});
+	if (!res.ok) throw new Error("Не удалось удалить SMTP-аккаунт");
+}
+
+export async function toggleSmtpAccountActive(
+	id: string,
+	isActive: boolean,
+): Promise<SmtpAccount> {
+	const res = await fetch(`${API_URL}/connectors/smtp/${id}/active`, {
+		method: "PATCH",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ isActive }),
+	});
+	if (!res.ok) throw new Error("Не удалось изменить статус SMTP-аккаунта");
+	return res.json();
+}
+
 export type Channel = {
 	id: string;
 	name: string;

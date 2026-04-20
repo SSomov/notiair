@@ -14,6 +14,7 @@ type Type string
 
 const (
 	TypeTelegram Type = "telegram"
+	TypeSMTP     Type = "smtp"
 	TypeDefault  Type = "default"
 )
 

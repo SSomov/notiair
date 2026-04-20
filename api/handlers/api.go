@@ -429,6 +429,238 @@ func (a *API) ToggleTelegramTokenActive(c *fiber.Ctx) error {
 	})
 }
 
+type smtpAccountRequest struct {
+	Name        string `json:"name"`
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+	From        string `json:"from"`
+	Comment     string `json:"comment"`
+	UseTLS      bool   `json:"useTls"`
+	UseStartTLS bool   `json:"useStartTls"`
+}
+
+type smtpAccountResponse struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+	From        string `json:"from"`
+	Comment     string `json:"comment"`
+	UseTLS      bool   `json:"useTls"`
+	UseStartTLS bool   `json:"useStartTls"`
+	IsActive    bool   `json:"isActive"`
+}
+
+func intFromSettings(v any) int {
+	if v == nil {
+		return 0
+	}
+	switch x := v.(type) {
+	case float64:
+		return int(x)
+	case int:
+		return x
+	case int64:
+		return int(x)
+	default:
+		return 0
+	}
+}
+
+func boolFromSettings(v any) bool {
+	if v == nil {
+		return false
+	}
+	b, ok := v.(bool)
+	return ok && b
+}
+
+func stringFromSettings(m map[string]any, key string) string {
+	if m == nil {
+		return ""
+	}
+	s, _ := m[key].(string)
+	return s
+}
+
+func smtpResponseFromConfig(cfg serviceconfig.ServiceConfig) smtpAccountResponse {
+	m := map[string]any(cfg.Settings)
+	return smtpAccountResponse{
+		ID:          cfg.ID,
+		Name:        stringFromSettings(m, "name"),
+		Host:        stringFromSettings(m, "host"),
+		Port:        intFromSettings(m["port"]),
+		Username:    stringFromSettings(m, "username"),
+		Password:    stringFromSettings(m, "password"),
+		From:        stringFromSettings(m, "from"),
+		Comment:     stringFromSettings(m, "comment"),
+		UseTLS:      boolFromSettings(m["useTls"]),
+		UseStartTLS: boolFromSettings(m["useStartTls"]),
+		IsActive:    cfg.IsActive,
+	}
+}
+
+func smtpSettingsFromRequest(req smtpAccountRequest) map[string]any {
+	return map[string]any{
+		"name":        req.Name,
+		"host":        req.Host,
+		"port":        req.Port,
+		"username":    req.Username,
+		"password":    req.Password,
+		"from":        req.From,
+		"comment":     req.Comment,
+		"useTls":      req.UseTLS,
+		"useStartTls": req.UseStartTLS,
+	}
+}
+
+func (a *API) findSMTPConfig(ctx context.Context, id string) (serviceconfig.ServiceConfig, error) {
+	configs, err := a.serviceConfig.List(ctx)
+	if err != nil {
+		return serviceconfig.ServiceConfig{}, err
+	}
+	for _, cfg := range configs {
+		if cfg.ID == id && cfg.Type == serviceconfig.TypeSMTP {
+			return cfg, nil
+		}
+	}
+	return serviceconfig.ServiceConfig{}, fiber.NewError(fiber.StatusNotFound, "smtp account not found")
+}
+
+func (a *API) ListSMTPAccounts(c *fiber.Ctx) error {
+	configs, err := a.serviceConfig.List(c.Context())
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+
+	out := make([]smtpAccountResponse, 0)
+	for _, cfg := range configs {
+		if cfg.Type != serviceconfig.TypeSMTP {
+			continue
+		}
+		host := stringFromSettings(map[string]any(cfg.Settings), "host")
+		if host == "" {
+			continue
+		}
+		out = append(out, smtpResponseFromConfig(cfg))
+	}
+
+	return c.JSON(out)
+}
+
+func (a *API) CreateSMTPAccount(c *fiber.Ctx) error {
+	var req smtpAccountRequest
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+
+	if req.Host == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "host is required")
+	}
+	if req.Port <= 0 || req.Port > 65535 {
+		return fiber.NewError(fiber.StatusBadRequest, "port must be between 1 and 65535")
+	}
+
+	created, err := a.serviceConfig.Create(c.Context(), serviceconfig.CreateInput{
+		Type:      serviceconfig.TypeSMTP,
+		IsDefault: false,
+		IsActive:  true,
+		Settings:  smtpSettingsFromRequest(req),
+	})
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(smtpResponseFromConfig(created))
+}
+
+func (a *API) UpdateSMTPAccount(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "id is required")
+	}
+
+	existing, err := a.findSMTPConfig(c.Context(), id)
+	if err != nil {
+		return err
+	}
+
+	var req smtpAccountRequest
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+
+	if req.Host == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "host is required")
+	}
+	if req.Port <= 0 || req.Port > 65535 {
+		return fiber.NewError(fiber.StatusBadRequest, "port must be between 1 and 65535")
+	}
+
+	if req.Password == "" {
+		req.Password = stringFromSettings(map[string]any(existing.Settings), "password")
+	}
+
+	updated, err := a.serviceConfig.Update(c.Context(), id, serviceconfig.UpdateInput{
+		Settings: smtpSettingsFromRequest(req),
+	})
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+
+	return c.JSON(smtpResponseFromConfig(updated))
+}
+
+func (a *API) DeleteSMTPAccount(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "id is required")
+	}
+
+	if _, err := a.findSMTPConfig(c.Context(), id); err != nil {
+		return err
+	}
+
+	if err := a.serviceConfig.Delete(c.Context(), id); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (a *API) ToggleSMTPAccountActive(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "id is required")
+	}
+
+	if _, err := a.findSMTPConfig(c.Context(), id); err != nil {
+		return err
+	}
+
+	var req struct {
+		IsActive bool `json:"isActive"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+
+	if err := a.serviceConfig.SetActive(c.Context(), id, req.IsActive); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+
+	updatedCfg, err := a.findSMTPConfig(c.Context(), id)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(smtpResponseFromConfig(updatedCfg))
+}
+
 type channelRequest struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"displayName"`

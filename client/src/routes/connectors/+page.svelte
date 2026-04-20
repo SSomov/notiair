@@ -2,12 +2,13 @@
 	import { onMount } from "svelte";
 	import { page } from "$app/stores";
 	import { resolve } from "$app/paths";
-	import { listTelegramTokens, type TelegramToken } from "$lib/api";
+	import { listTelegramTokens, listSmtpAccounts, type TelegramToken } from "$lib/api";
 	import { getLocaleFromPath, addLocaleToPath } from "$lib/i18n/utils";
 	import TelegramIcon from "$lib/components/TelegramIcon.svelte";
 
 	$: loc = getLocaleFromPath($page.url.pathname);
 	$: hrefTelegram = resolve(addLocaleToPath("/connectors/telegram", loc));
+	$: hrefSmtp = resolve(addLocaleToPath("/connectors/smtp", loc));
 
 	type Connector = {
 		slug: "telegram" | "slack" | "smtp";
@@ -20,6 +21,7 @@
 	};
 
 	let telegramTokens: TelegramToken[] = [];
+	let smtpAccounts: Awaited<ReturnType<typeof listSmtpAccounts>> = [];
 	let loading = true;
 
 const connectors: Connector[] = [
@@ -47,7 +49,6 @@ const connectors: Connector[] = [
 		badge: "mail",
 		color: "text-positive",
 		placeholder: "Введите SMTP connection string",
-		comingSoon: true,
 	},
 ];
 
@@ -57,10 +58,9 @@ type Note = {
 	comment: string;
 };
 
-	let notes: Record<Connector["slug"], Note[]> = {
+	let notes: Record<"telegram" | "slack", Note[]> = {
 		telegram: [],
 		slack: [],
-		smtp: [],
 	};
 
 	let modalOpen = false;
@@ -70,10 +70,13 @@ type Note = {
 
 	onMount(async () => {
 		try {
-			telegramTokens = await listTelegramTokens();
+			const [tg, smtp] = await Promise.all([listTelegramTokens(), listSmtpAccounts()]);
+			telegramTokens = tg;
+			smtpAccounts = smtp;
 		} catch (e) {
-			console.error("Failed to load telegram tokens:", e);
+			console.error("Failed to load connectors:", e);
 			telegramTokens = [];
+			smtpAccounts = [];
 		} finally {
 			loading = false;
 		}
@@ -81,6 +84,8 @@ type Note = {
 
 	$: activeTelegramCount = telegramTokens.filter((t) => t.isActive).length;
 	$: totalTelegramCount = telegramTokens.length;
+	$: activeSmtpCount = smtpAccounts.filter((a) => a.isActive).length;
+	$: totalSmtpCount = smtpAccounts.length;
 
 function openModal(connector: Connector) {
 	current = connector;
@@ -96,6 +101,7 @@ function closeModal() {
 
 function saveConnector() {
 	if (!current) return;
+	if (current.slug !== "telegram" && current.slug !== "slack") return;
 	const existingNotes = notes[current.slug];
 	const nextIndex = existingNotes.length + 1;
 	const id = `#${current.slug.slice(0, 2).toUpperCase()}-${String(nextIndex).padStart(3, "0")}`;
@@ -115,7 +121,7 @@ function saveConnector() {
 	closeModal();
 }
 
-function editNote(slug: Connector["slug"], note: Note) {
+function editNote(slug: "telegram" | "slack", note: Note) {
 	current = connectors.find((c) => c.slug === slug) ?? null;
 	if (!current) return;
 	secretInput = note.secret;
@@ -123,7 +129,7 @@ function editNote(slug: Connector["slug"], note: Note) {
 	modalOpen = true;
 }
 
-function deleteNote(slug: Connector["slug"], id: string) {
+function deleteNote(slug: "telegram" | "slack", id: string) {
 	notes = {
 		...notes,
 		[slug]: notes[slug].filter((note) => note.id !== id),
@@ -180,7 +186,7 @@ function deleteNote(slug: Connector["slug"], id: string) {
                         class="icon-btn"
                         title="Редактировать"
                         aria-label="Редактировать"
-                        on:click|stopPropagation={() => editNote(connector.slug, note)}
+                        on:click|stopPropagation={() => editNote("telegram", note)}
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
                           <path d="M16.862 3.487 20.51 7.136a1.5 1.5 0 0 1 0 2.121l-9.193 9.193-4.593.511a1 1 0 0 1-1.1-1.1l.511-4.593 9.193-9.193a1.5 1.5 0 0 1 2.121 0Z" />
@@ -192,7 +198,7 @@ function deleteNote(slug: Connector["slug"], id: string) {
                         class="icon-btn"
                         title="Удалить"
                         aria-label="Удалить"
-                        on:click|stopPropagation={() => deleteNote(connector.slug, note.id)}
+                        on:click|stopPropagation={() => deleteNote("telegram", note.id)}
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
                           <path d="M6 7h12" />
@@ -208,6 +214,24 @@ function deleteNote(slug: Connector["slug"], id: string) {
               </div>
             {/if}
           </div>
+        </a>
+      {:else if connector.slug === 'smtp'}
+        <a href={hrefSmtp} class="glass-card h-full space-y-4 block transition hover:shadow-lg cursor-pointer">
+          <div class="flex items-center justify-between">
+            <h2 class={`text-xl font-semibold ${connector.color}`}>{connector.name}</h2>
+            <span class="pill capitalize">{connector.badge}</span>
+          </div>
+          <p class="text-sm text-muted">{connector.description}</p>
+          {#if !loading}
+            <div class="text-sm text-muted">
+              <span class="font-medium text-text">{activeSmtpCount}</span>
+              {#if totalSmtpCount > 0}
+                <span> из {totalSmtpCount} активны</span>
+              {:else}
+                <span> активных аккаунтов</span>
+              {/if}
+            </div>
+          {/if}
         </a>
       {:else}
         <article class="glass-card h-full space-y-4" class:opacity-50={connector.comingSoon} class:pointer-events-none={connector.comingSoon}>
@@ -227,9 +251,9 @@ function deleteNote(slug: Connector["slug"], id: string) {
               {connector.comingSoon ? 'Coming soon' : 'Добавить'}
             </button>
 
-          {#if notes[connector.slug].length > 0}
+          {#if notes.slack.length > 0}
             <div class="space-y-2">
-              {#each notes[connector.slug] as note}
+              {#each notes.slack as note}
                 <div class="flex items-start justify-between gap-3 rounded-xl border border-border bg-surfaceMuted/60 p-3 text-sm text-muted">
                   <div>
                     <p class="font-semibold text-text">{note.id}</p>
@@ -244,7 +268,7 @@ function deleteNote(slug: Connector["slug"], id: string) {
                       title="Редактировать"
                       aria-label="Редактировать"
                       disabled={connector.comingSoon}
-                      on:click={() => connector.comingSoon || editNote(connector.slug, note)}
+                      on:click={() => connector.comingSoon || editNote('slack', note)}
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
                         <path d="M16.862 3.487 20.51 7.136a1.5 1.5 0 0 1 0 2.121l-9.193 9.193-4.593.511a1 1 0 0 1-1.1-1.1l.511-4.593 9.193-9.193a1.5 1.5 0 0 1 2.121 0Z" />
@@ -257,7 +281,7 @@ function deleteNote(slug: Connector["slug"], id: string) {
                       title="Удалить"
                       aria-label="Удалить"
                       disabled={connector.comingSoon}
-                      on:click={() => connector.comingSoon || deleteNote(connector.slug, note.id)}
+                      on:click={() => connector.comingSoon || deleteNote('slack', note.id)}
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
                         <path d="M6 7h12" />
