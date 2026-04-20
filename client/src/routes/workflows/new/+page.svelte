@@ -81,11 +81,23 @@
 	const WORKSPACE_ZOOM_MAX = 2;
 	const WORKSPACE_ZOOM_STEP = 0.1;
 
+	/** После смены scale у холста getBoundingClientRect в том же кадре может быть от старого layout — пересчитываем рёбра после reflow. */
+	const bumpWorkspaceLayout = () => {
+		tick().then(() => {
+			requestAnimationFrame(() => {
+				requestAnimationFrame(() => {
+					windowResizeTrigger += 1;
+				});
+			});
+		});
+	};
+
 	const handleWorkspaceZoomIn = () => {
 		workspaceZoom = Math.min(
 			WORKSPACE_ZOOM_MAX,
 			Math.round((workspaceZoom + WORKSPACE_ZOOM_STEP) * 100) / 100
 		);
+		bumpWorkspaceLayout();
 	};
 
 	const handleWorkspaceZoomOut = () => {
@@ -93,10 +105,12 @@
 			WORKSPACE_ZOOM_MIN,
 			Math.round((workspaceZoom - WORKSPACE_ZOOM_STEP) * 100) / 100
 		);
+		bumpWorkspaceLayout();
 	};
 
 	const handleWorkspaceZoomReset = () => {
 		workspaceZoom = 1;
+		bumpWorkspaceLayout();
 	};
 
 	// Состояние для выбора канала
@@ -923,6 +937,7 @@
 	// Зависит от nodes, connecting и mousePosition
 	$: tempPath = (() => {
 		void workspaceZoom;
+		void windowResizeTrigger;
 		if (!connecting) return null;
 
 		const fromPos = getConnectorPosition(connecting.nodeId, connecting.port);
