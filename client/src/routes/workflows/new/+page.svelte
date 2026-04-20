@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { draggable } from '@neodrag/svelte';
 	import type { DragEventData } from '@neodrag/svelte';
-	import { onMount, tick } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import { get } from 'svelte/store';
 	import { locale, t } from '$lib/i18n';
 	import { resolveI18nError } from '$lib/i18n/resolveError';
@@ -73,6 +73,7 @@
 	let connecting: ConnectingState = null;
 	let mousePosition: { x: number; y: number } | null = null;
 	let workspaceElement: HTMLDivElement;
+	let workspaceExpanded = false;
 
 	// Состояние для выбора канала
 	let channelSelectModalOpen = false;
@@ -265,6 +266,21 @@
 		connecting = null;
 		mousePosition = null;
 	}
+
+	function handleGlobalKeydown(e: KeyboardEvent) {
+		if (e.key !== 'Escape') return;
+		if (connecting) {
+			cancelConnection();
+			return;
+		}
+		if (workspaceExpanded) {
+			workspaceExpanded = false;
+		}
+	}
+
+	const handleToggleWorkspaceExpand = () => {
+		workspaceExpanded = !workspaceExpanded;
+	};
 
 	function generateNodeId(variant: NodeVariant): string {
 		const existingIds = nodes.map((n) => n.id);
@@ -1034,9 +1050,19 @@
 			saving = false;
 		}
 	}
+
+	$: if (typeof document !== 'undefined') {
+		document.body.style.overflow = workspaceExpanded ? 'hidden' : '';
+	}
+
+	onDestroy(() => {
+		if (typeof document !== 'undefined') {
+			document.body.style.overflow = '';
+		}
+	});
 </script>
 
-<svelte:window on:keydown={(e) => e.key === 'Escape' && connecting && cancelConnection()} />
+<svelte:window on:keydown={handleGlobalKeydown} />
 
 <section class="space-y-8 px-4 pb-12 pt-2 md:px-12 md:pt-4">
 	<header class="space-y-2">
@@ -1101,36 +1127,51 @@
 		{/if}
 	</header>
 
-	<div class="workspace">
+	<div class="workspace" class:workspace-expanded={workspaceExpanded}>
 		<div class="workspace-toolbar">
-			<div class="relative">
+			<div class="flex flex-wrap items-center gap-3">
+				<div class="relative">
+					<button
+						type="button"
+						class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm"
+						on:click={() => (triggerMenuOpen = !triggerMenuOpen)}
+						aria-haspopup="true"
+						aria-expanded={triggerMenuOpen}
+					>
+						{selectedTrigger}
+					</button>
+					{#if triggerMenuOpen}
+						<ul
+							class="absolute z-10 mt-2 w-48 overflow-hidden rounded-xl border border-border bg-surface shadow-lg"
+						>
+							{#each triggerOptions as option}
+								<li>
+									<button
+										type="button"
+										class="block w-full px-4 py-2 text-left text-sm text-text hover:bg-surfaceMuted disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+										on:click={() => selectTrigger(option)}
+										disabled={option.disabled}
+									>
+										{option.name}
+									</button>
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				</div>
 				<button
 					type="button"
 					class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm"
-					on:click={() => (triggerMenuOpen = !triggerMenuOpen)}
-					aria-haspopup="true"
-					aria-expanded={triggerMenuOpen}
+					on:click={handleToggleWorkspaceExpand}
+					aria-pressed={workspaceExpanded}
+					aria-label={workspaceExpanded
+						? $t('workflowBuilder.collapseWorkspaceAria')
+						: $t('workflowBuilder.expandWorkspaceAria')}
 				>
-					{selectedTrigger}
+					{workspaceExpanded
+						? $t('workflowBuilder.collapseWorkspace')
+						: $t('workflowBuilder.expandWorkspace')}
 				</button>
-				{#if triggerMenuOpen}
-					<ul
-						class="absolute z-10 mt-2 w-48 overflow-hidden rounded-xl border border-border bg-surface shadow-lg"
-					>
-						{#each triggerOptions as option}
-							<li>
-								<button
-									type="button"
-									class="block w-full px-4 py-2 text-left text-sm text-text hover:bg-surfaceMuted disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-									on:click={() => selectTrigger(option)}
-									disabled={option.disabled}
-								>
-									{option.name}
-								</button>
-							</li>
-						{/each}
-					</ul>
-				{/if}
 			</div>
 
 			<div class="flex items-center gap-3">
@@ -1812,6 +1853,23 @@
 		overflow: hidden;
 		background-color: #fff;
 		min-height: 700px;
+	}
+
+	.workspace.workspace-expanded {
+		position: fixed;
+		inset: 0;
+		z-index: 50;
+		display: flex;
+		flex-direction: column;
+		min-height: 100vh;
+		max-height: 100vh;
+		border-radius: 0;
+	}
+
+	.workspace.workspace-expanded .workspace-content {
+		flex: 1;
+		min-height: 0;
+		overflow: auto;
 	}
 
 	.workspace::before {
