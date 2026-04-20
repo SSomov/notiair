@@ -74,6 +74,7 @@
 	let connecting: ConnectingState = null;
 	let mousePosition: { x: number; y: number } | null = null;
 	let workspaceElement: HTMLDivElement;
+	let workspaceCanvasScaleElement: HTMLDivElement;
 	let workspaceExpanded = false;
 	let workspaceZoom = 1;
 	const WORKSPACE_ZOOM_MIN = 0.25;
@@ -231,7 +232,7 @@
 
 	function getConnectorPosition(nodeId: string, port: PortType): { x: number; y: number } | null {
 		const node = nodes.find((n) => n.id === nodeId);
-		if (!node || !workspaceElement) return null;
+		if (!node || !workspaceCanvasScaleElement) return null;
 
 		// Найти DOM элемент ноды и коннектора для точного расчета координат
 		const nodeElement = document.querySelector(`[data-node-id="${nodeId}"]`) as HTMLElement;
@@ -241,13 +242,13 @@
 		const connectorElement = nodeElement.querySelector(`.connector.${port}`) as HTMLElement;
 		if (!connectorElement) return null;
 
-		// Получить координаты коннектора относительно viewport
+		// Центр коннектора в viewport, затем в системе координат SVG (до scale), совпадающей с layout внутри .workspace-canvas-scale
 		const connectorRect = connectorElement.getBoundingClientRect();
-		const workspaceRect = workspaceElement.getBoundingClientRect();
+		const canvasRect = workspaceCanvasScaleElement.getBoundingClientRect();
+		const z = workspaceZoom || 1;
 
-		// Вычислить координаты центра коннектора (10px x 10px, центр на 5px от краев)
-		const connectorCenterX = connectorRect.left + connectorRect.width / 2 - workspaceRect.left;
-		const connectorCenterY = connectorRect.top + connectorRect.height / 2 - workspaceRect.top;
+		const connectorCenterX = (connectorRect.left + connectorRect.width / 2 - canvasRect.left) / z;
+		const connectorCenterY = (connectorRect.top + connectorRect.height / 2 - canvasRect.top) / z;
 
 		return { x: connectorCenterX, y: connectorCenterY };
 	}
@@ -874,11 +875,12 @@
 	let hoveredEdgeId: string | null = null;
 
 	function handleWorkspaceMouseMove(event: MouseEvent) {
-		if (connecting && workspaceElement) {
-			const rect = workspaceElement.getBoundingClientRect();
+		if (connecting && workspaceCanvasScaleElement) {
+			const rect = workspaceCanvasScaleElement.getBoundingClientRect();
+			const z = workspaceZoom || 1;
 			mousePosition = {
-				x: event.clientX - rect.left,
-				y: event.clientY - rect.top,
+				x: (event.clientX - rect.left) / z,
+				y: (event.clientY - rect.top) / z,
 			};
 		}
 	}
@@ -1293,6 +1295,7 @@
 		>
 			<div
 				class="workspace-canvas-scale"
+				bind:this={workspaceCanvasScaleElement}
 				style="transform: scale({workspaceZoom}); transform-origin: 0 0; width: calc(100% / {workspaceZoom}); min-height: calc(580px / {workspaceZoom});"
 			>
 			<!-- SVG слой для линий -->
