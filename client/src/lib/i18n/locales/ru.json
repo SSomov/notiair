@@ -153,6 +153,8 @@
 		"secretPlaceholder": "Введите Bot API Token",
 		"secretLabel": "Bot API Token",
 		"secretPrefix": "Токен:",
+		"addChannelTitle": "Добавить канал",
+		"addChannelAria": "Добавить канал для этого токена",
 		"pill": "Telegram · коннекторы"
 	},
 	"workflowCanvas": {

@@ -153,6 +153,8 @@
 		"secretPlaceholder": "Enter Bot API token",
 		"secretLabel": "Bot API Token",
 		"secretPrefix": "Token:",
+		"addChannelTitle": "Add channel",
+		"addChannelAria": "Add channel for this token",
 		"pill": "Telegram · connectors"
 	},
 	"workflowCanvas": {
