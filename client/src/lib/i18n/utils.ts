@@ -55,5 +55,6 @@ export async function switchLocale(
 	const pathWithoutLocale = removeLocaleFromPath(currentPath);
 	const newPath = addLocaleToPath(pathWithoutLocale, newLocale);
 
-	await goto(newPath, { invalidateAll: true });
+	// goto("/ru/...") resolves against host root (loses paths.base); include base explicitly
+	await goto(`${base}${newPath}`, { invalidateAll: true });
 }
