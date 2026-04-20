@@ -91,7 +91,7 @@ notiair/
 ### Запуск инфраструктуры
 
 ```bash
-cd ops
+cd .ops
 docker compose up -d
 ```
 
@@ -184,6 +184,27 @@ Frontend будет доступен по адресу `http://localhost:5173` (
 - Расширяемая архитектура для добавления новых каналов
 
 ## Разработка
+
+### Цели Make (`.ops/Makefile`)
+
+Из корня репозитория удобно вызывать `make -C .ops <цель>`. Команды `dev-api`, `dev-client` и `dev` рассчитаны на то, что текущий каталог при выполнении рецептов — `.ops` (поэтому используйте именно `-C .ops` или `cd .ops && make …`).
+
+| Цель | Описание |
+|------|----------|
+| `build-api` | Сборка Docker-образа API: `notiair:api-local` (`Dockerfile.api`, контекст — корень репозитория) |
+| `build-client` | Сборка Docker-образа клиента: `notiair:client-local` (`Dockerfile.client`) |
+| `build-all` | Последовательно `build-api` и `build-client` |
+| `dev-api` | Локальный запуск API: `go run ./main.go` в каталоге `api/` |
+| `dev-client` | Локальный dev-сервер фронтенда: `bun dev` в каталоге `client/` |
+| `dev` | Поднимает зависимости через `docker compose -f .ops/compose.dev.yml`, затем параллельно API и клиент; при выходе останавливает compose |
+
+Примеры:
+
+```bash
+make -C .ops build-all
+make -C .ops dev-api
+make -C .ops dev
+```
 
 ### Структура модулей Backend
 
