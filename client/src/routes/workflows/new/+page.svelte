@@ -10,10 +10,10 @@
 		saveWorkflow,
 		getWorkflow,
 		listTelegramTokens,
+		listSmtpAccounts,
 		listChannels,
 		dispatchNotification,
 		type Channel,
-		type TelegramToken,
 	} from '$lib/api';
 	import type { WorkflowDraft } from '$lib/types/workflow';
 	import TelegramIcon from '$lib/components/TelegramIcon.svelte';
@@ -51,6 +51,7 @@
 		selectedChannelId?: string;
 		selectedChannelName?: string;
 		selectedChannelConnectorId?: string;
+		selectedChannelConnectorType?: 'telegram' | 'slack' | 'smtp';
 		templateBody?: string;
 		templatePayload?: Record<string, any>;
 		triggerPayload?: Record<string, any>;
@@ -158,10 +159,15 @@
 			: null;
 	}
 
-	function getConnectorType(connectorId: string | undefined): 'telegram' | 'slack' | 'smtp' | null {
-		if (!connectorId) return null;
-		// Пока все каналы из Telegram токенов
-		// В будущем можно определить по типу коннектора
+	function getChannelConnectorType(node: CanvasNode): 'telegram' | 'slack' | 'smtp' | null {
+		if (node.variant !== 'channel' || !node.selectedChannelConnectorId) return null;
+		if (node.selectedChannelConnectorType) return node.selectedChannelConnectorType;
+		if (
+			node.selectedChannelId &&
+			node.selectedChannelId === node.selectedChannelConnectorId
+		) {
+			return 'smtp';
+		}
 		return 'telegram';
 	}
 
@@ -311,17 +317,18 @@
 	};
 
 	async function openChannelSelect(nodeId: string) {
-		console.log('openChannelSelect called with nodeId:', nodeId);
 		editingChannelNodeId = nodeId;
 		channelSelectModalOpen = true;
 		loadingChannels = true;
 
 		try {
-			// Загружаем активные токены Telegram
-			const tokens = await listTelegramTokens();
+			const [tokens, smtpAccounts] = await Promise.all([
+				listTelegramTokens(),
+				listSmtpAccounts(),
+			]);
 			const activeTokens = tokens.filter((t) => t.isActive);
+			const activeSmtp = smtpAccounts.filter((a) => a.isActive);
 
-			// Загружаем все каналы из всех активных токенов с информацией о коннекторе
 			const allChannels: ChannelWithConnector[] = [];
 			for (const token of activeTokens) {
 				try {
@@ -338,8 +345,21 @@
 				}
 			}
 
+			for (const acc of activeSmtp) {
+				const descParts = [acc.from, acc.host].filter(Boolean);
+				allChannels.push({
+					id: acc.id,
+					name: acc.name,
+					displayName: acc.name,
+					description:
+						descParts.length > 0 ? descParts.join(' · ') : acc.comment || '',
+					muted: false,
+					connectorId: acc.id,
+					connectorType: 'smtp' as const,
+				});
+			}
+
 			availableChannels = allChannels;
-			console.log('Available channels loaded:', availableChannels.length);
 		} catch (e) {
 			console.error('Error loading channels:', e);
 			error = e instanceof Error ? e.message : 'errors.loadChannels';
@@ -359,6 +379,7 @@
 					selectedChannelId: channel.id,
 					selectedChannelName: channel.displayName || channel.name,
 					selectedChannelConnectorId: channel.connectorId,
+					selectedChannelConnectorType: channel.connectorType,
 					description: channel.description || channel.displayName || channel.name,
 				};
 			}
@@ -934,6 +955,9 @@
 									selectedChannelId: config.channelId,
 									selectedChannelName: config.channelName || config.channelId,
 									selectedChannelConnectorId: config.connectorId,
+									selectedChannelConnectorType:
+										(config.connectorType as CanvasNode['selectedChannelConnectorType']) ||
+										(config.channelId === config.connectorId ? 'smtp' : 'telegram'),
 								}
 							: {}),
 						...(variant === 'template' && (config?.templateBody || config?.templatePayload)
@@ -1013,6 +1037,7 @@
 									channelId: node.selectedChannelId,
 									channelName: node.selectedChannelName,
 									connectorId: node.selectedChannelConnectorId,
+									connectorType: node.selectedChannelConnectorType,
 								}
 							: {}),
 						...(node.variant === 'template' && (node.templateBody || node.templatePayload)
@@ -1459,10 +1484,28 @@
 					{/if}
 					<span class="node-label">
 						{#if node.variant === 'channel' && node.selectedChannelConnectorId}
-							{@const connectorType = getConnectorType(node.selectedChannelConnectorId)}
+							{@const connectorType = getChannelConnectorType(node)}
 							{#if connectorType === 'telegram'}
 								<span class="connector-icon">
 									<TelegramIcon size={16} />
+								</span>
+							{:else if connectorType === 'smtp'}
+								<span class="connector-icon" title="SMTP">
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.5"
+										class="h-4 w-4"
+										aria-hidden="true"
+									>
+										<path
+											d="M4 6h16v12H4V6Zm0 0 8 6 8-6"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+										/>
+									</svg>
 								</span>
 							{/if}
 						{/if}
