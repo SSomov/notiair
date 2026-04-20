@@ -20,8 +20,8 @@
 	let error: string | null = null;
 	let errorDisplay: string | null = null;
 
-	let tokenModalOpen = false;
-	let editingToken: TelegramToken | null = null;
+	let modalOpen = false;
+	let editing: TelegramToken | null = null;
 	let nameInput = "";
 	let secretInput = "";
 	let commentInput = "";
@@ -32,9 +32,9 @@
 
 	function maskSecret(secret: string): string {
 		if (!secret || secret.length <= 8) return "••••••••";
-		const start = secret.substring(0, 4);
-		const end = secret.substring(secret.length - 4);
-		const masked = "•".repeat(Math.min(12, secret.length - 8));
+		const start = secret.substring(0, 2);
+		const end = secret.substring(secret.length - 2);
+		const masked = "•".repeat(Math.min(12, secret.length - 4));
 		return `${start}${masked}${end}`;
 	}
 
@@ -56,40 +56,39 @@
 		}
 	}
 
-	function openTokenModal(token?: TelegramToken) {
-		editingToken = token || null;
-		nameInput = token?.name || "";
-		secretInput = token?.secret || "";
-		commentInput = token?.comment || "";
-		tokenModalOpen = true;
+	function openModal(tok?: TelegramToken) {
+		editing = tok || null;
+		nameInput = tok?.name || "";
+		secretInput = tok?.secret || "";
+		commentInput = tok?.comment || "";
+		modalOpen = true;
 		error = null;
 	}
 
-	function closeTokenModal() {
-		tokenModalOpen = false;
-		editingToken = null;
+	function closeModal() {
+		modalOpen = false;
+		editing = null;
 		nameInput = "";
 		secretInput = "";
 		commentInput = "";
 		error = null;
 	}
 
-	async function saveToken() {
+	async function handleSave() {
 		if (!secretInput.trim() || !nameInput.trim() || saving) return;
 
 		try {
 			saving = true;
 			error = null;
 
-			if (editingToken) {
-				const updated = await updateTelegramToken(editingToken.id, {
+			if (editing) {
+				const id = editing.id;
+				const updated = await updateTelegramToken(id, {
 					name: nameInput.trim(),
 					secret: secretInput.trim(),
 					comment: commentInput.trim(),
 				});
-				tokens = tokens.map((token) =>
-					token.id === editingToken.id ? updated : token,
-				);
+				tokens = tokens.map((row) => (row.id === id ? updated : row));
 			} else {
 				const created = await createTelegramToken({
 					name: nameInput.trim(),
@@ -99,11 +98,11 @@
 				tokens = [...tokens, created];
 			}
 
-			closeTokenModal();
+			closeModal();
 		} catch (e) {
 			error = e instanceof Error
 				? e.message
-				: editingToken
+				: editing
 					? "errors.updateToken"
 					: "errors.createToken";
 		} finally {
@@ -111,23 +110,23 @@
 		}
 	}
 
-	async function deleteToken(id: string) {
+	async function handleDelete(id: string) {
 		if (!confirm(get(t)("telegramConnectorPage.confirmDelete"))) return;
 
 		try {
 			error = null;
 			await deleteTelegramToken(id);
-			tokens = tokens.filter((token) => token.id !== id);
+			tokens = tokens.filter((row) => row.id !== id);
 		} catch (e) {
 			error = e instanceof Error ? e.message : "errors.deleteToken";
 		}
 	}
 
-	async function toggleActive(token: TelegramToken) {
+	async function handleToggleActive(tok: TelegramToken) {
 		try {
 			error = null;
-			const updated = await toggleTelegramTokenActive(token.id, !token.isActive);
-			tokens = tokens.map((t) => (t.id === token.id ? updated : t));
+			const updated = await toggleTelegramTokenActive(tok.id, !tok.isActive);
+			tokens = tokens.map((row) => (row.id === tok.id ? updated : row));
 		} catch (e) {
 			error = e instanceof Error ? e.message : "errors.toggleTokenStatus";
 		}
@@ -160,7 +159,7 @@
       <button
         type="button"
         class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm"
-        on:click={() => openTokenModal()}
+        on:click={() => openModal()}
       >
         {$t('telegramConnectorPage.addToken')}
       </button>
@@ -185,34 +184,36 @@
         {#each tokens as token}
           <div class="glass-card p-4 space-y-3">
             <div class="flex items-start justify-between gap-3">
-              <div class="flex-1 space-y-2">
+              <div class="flex-1 space-y-2 min-w-0">
                 <div class="space-y-1">
-                  <div class="flex items-center justify-between">
-                    <p class="font-semibold text-text">{token.name || $t('common.noName')}</p>
-                    <label class="relative inline-flex items-center cursor-pointer">
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="font-semibold text-text truncate">{token.name || $t('common.noName')}</p>
+                    <label class="relative inline-flex items-center cursor-pointer shrink-0">
                       <input
                         type="checkbox"
                         checked={token.isActive}
-                        on:change={() => toggleActive(token)}
+                        on:change={() => handleToggleActive(token)}
                         class="sr-only peer"
                       />
                       <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-accent rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
                       <span class="ml-2 text-xs text-muted">{token.isActive ? $t('common.activeFemale') : $t('common.inactive')}</span>
                     </label>
                   </div>
-                  <span class="text-xs text-muted font-mono">{maskSecret(token.secret)}</span>
+                  <p class="text-xs font-mono text-muted break-all">
+                    {$t('telegramConnectorPage.secretPrefix')} {maskSecret(token.secret)}
+                  </p>
                 </div>
                 {#if token.comment}
                   <p class="text-sm text-muted">{token.comment}</p>
                 {/if}
               </div>
-              <div class="flex items-center gap-2">
+              <div class="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
                   class="icon-btn"
-                  title={$t('telegramConnectorPage.editToken')}
-                  aria-label={$t('telegramConnectorPage.editToken')}
-                  on:click={() => openTokenModal(token)}
+                  title={$t('common.edit')}
+                  aria-label={$t('common.edit')}
+                  on:click={() => openModal(token)}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
                     <path d="M16.862 3.487 20.51 7.136a1.5 1.5 0 0 1 0 2.121l-9.193 9.193-4.593.511a1 1 0 0 1-1.1-1.1l.511-4.593 9.193-9.193a1.5 1.5 0 0 1 2.121 0Z" />
@@ -222,9 +223,9 @@
                 <button
                   type="button"
                   class="icon-btn"
-                  title={$t('telegramConnectorPage.deleteToken')}
-                  aria-label={$t('telegramConnectorPage.deleteToken')}
-                  on:click={() => deleteToken(token.id)}
+                  title={$t('common.delete')}
+                  aria-label={$t('common.delete')}
+                  on:click={() => handleDelete(token.id)}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
                     <path d="M6 7h12" />
@@ -242,23 +243,23 @@
     {/if}
   </div>
 
-  {#if tokenModalOpen}
-    <div class="modal-backdrop" role="presentation" on:click={closeTokenModal}></div>
+  {#if modalOpen}
+    <div class="modal-backdrop" role="presentation" on:click={closeModal}></div>
     <div class="modal-wrap" role="dialog" aria-modal="true">
-      <div class="modal">
+      <div class="modal modal-wide">
         <div class="modal-header">
           <h3 class="text-lg font-semibold text-text">
-            {editingToken ? $t('telegramConnectorPage.modalEdit') : $t('telegramConnectorPage.modalAdd')}
+            {editing ? $t('telegramConnectorPage.editTitle') : $t('telegramConnectorPage.newTitle')}
           </h3>
-          <button type="button" class="modal-close" on:click={closeTokenModal} aria-label={$t('common.close')}>
+          <button type="button" class="modal-close" on:click={closeModal} aria-label={$t('common.close')}>
             ✕
           </button>
         </div>
         <div class="modal-body space-y-4">
           <div class="space-y-1">
-            <label class="text-sm font-medium text-text" for="name-input">{$t('common.name')}</label>
+            <label class="text-sm font-medium text-text" for="tg-name">{$t('common.name')}</label>
             <input
-              id="name-input"
+              id="tg-name"
               class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
               bind:value={nameInput}
               placeholder={$t('telegramConnectorPage.namePlaceholder')}
@@ -266,34 +267,35 @@
             />
           </div>
           <div class="space-y-1">
-            <label class="text-sm font-medium text-text" for="secret-input">{$t('telegramConnectorPage.secretLabel')}</label>
+            <label class="text-sm font-medium text-text" for="tg-secret">{$t('telegramConnectorPage.secretLabel')}</label>
             <input
-              id="secret-input"
+              id="tg-secret"
+              type="password"
               class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
               bind:value={secretInput}
               placeholder={$t('telegramConnectorPage.secretPlaceholder')}
-              autocomplete="off"
+              autocomplete="new-password"
             />
           </div>
           <div class="space-y-1">
-            <label class="text-sm font-medium text-text" for="comment-input">{$t('common.comment')}</label>
+            <label class="text-sm font-medium text-text" for="tg-comment">{$t('common.comment')}</label>
             <textarea
-              id="comment-input"
-              class="h-24 w-full resize-none rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
+              id="tg-comment"
+              class="h-20 w-full resize-none rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent focus:outline-none"
               bind:value={commentInput}
-              placeholder={$t('telegramConnectorPage.commentPlaceholder')}
+              placeholder={$t('common.internalNotes')}
             ></textarea>
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn-secondary" on:click={closeTokenModal}>{$t('common.cancel')}</button>
+          <button type="button" class="btn-secondary" on:click={closeModal}>{$t('common.cancel')}</button>
           <button
             type="button"
             class="btn-primary"
-            on:click={saveToken}
+            on:click={handleSave}
             disabled={!secretInput.trim() || !nameInput.trim() || saving}
           >
-            {saving ? $t('common.saving') : editingToken ? $t('common.save') : $t('common.add')}
+            {saving ? $t('common.saving') : editing ? $t('common.save') : $t('common.add')}
           </button>
         </div>
       </div>
@@ -332,6 +334,10 @@
     gap: 1.5rem;
     padding: 1.75rem;
     max-height: calc(100vh - 4rem);
+  }
+
+  .modal-wide {
+    width: min(520px, 100%);
   }
 
   .modal-header {
