@@ -1,112 +1,79 @@
-# NotiAir
+<div align="center">
+  <img src="docs/img/logo.svg" alt="NotiAir" width="96" height="96"/>
+  <h1>NotiAir</h1>
+  <p><strong>Notification orchestration with visual workflows, message templates, and reliable async delivery.</strong></p>
+  <p>
+    <a href="./README_ru.md">Русский</a>
+  </p>
+</div>
 
-Система управления уведомлениями с поддержкой визуального конструирования workflow, шаблонов сообщений и асинхронной доставки через различные каналы связи.
+---
 
-## Описание
+## Overview
 
-NotiAir — это платформа для создания и управления сложными сценариями отправки уведомлений. Система позволяет:
+NotiAir is a platform for designing and running notification pipelines: message templates with variables, a visual workflow builder (conditions, filters, routing), and asynchronous delivery through channels such as Telegram—with an outbox-backed path for dependable dispatch.
 
-- Создавать шаблоны сообщений с переменными
-- Конструировать workflow с условиями, фильтрами и маршрутизацией
-- Отправлять уведомления через Telegram и другие каналы
-- Мониторить очереди задач и управлять доставкой
-- Использовать паттерн Outbox для гарантированной доставки
+## Features
 
-## Архитектура
+- **Templates** — Variables, Markdown-friendly content, live preview with sample payloads
+- **Workflow builder** — Drag-and-drop graph: triggers, filters, actions, conditional routing
+- **Queues** — Asynq on Redis, retries, task visibility
+- **Delivery** — Outbox pattern for at-least-once style reliability; Telegram Bot API included; architecture ready for more channels
+- **Connectors** — Manage channel connectors (e.g. Telegram) from the UI
 
-Проект состоит из двух основных компонентов:
+## Architecture
 
-### Backend API (Go)
-- REST API на базе Fiber
-- PostgreSQL для хранения данных
-- Asynq (Redis) для асинхронной обработки задач
-- Outbox pattern для надежной доставки
-- Поддержка Telegram Bot API
+| Layer | Role |
+|--------|------|
+| **Backend (Go)** | REST API (Fiber), PostgreSQL, Asynq/Redis workers, outbox, Telegram transport |
+| **Frontend (SvelteKit)** | Workflow editor, template editor, queue monitoring, connector management |
 
-### Frontend Client (SvelteKit)
-- Визуальный редактор workflow с drag & drop
-- Редактор шаблонов с превью
-- Мониторинг очередей и задач
-- Управление каналами и коннекторами
+## Tech stack
 
-## Технологический стек
+**Backend:** Go 1.24 · Fiber v2 · GORM · PostgreSQL · Asynq · Telegram Bot API  
 
-### Backend
-- **Go 1.24** — основной язык
-- **Fiber v2** — HTTP фреймворк
-- **GORM** — ORM для работы с БД
-- **PostgreSQL** — основная БД
-- **Asynq** — очередь задач на базе Redis
-- **Telegram Bot API** — интеграция с Telegram
+**Frontend:** SvelteKit · TypeScript · Tailwind CSS · Bun · `@neodrag/svelte`
 
-### Frontend
-- **SvelteKit** — фреймворк
-- **TypeScript** — типизация
-- **Tailwind CSS** — стилизация
-- **Bun** — runtime и пакетный менеджер
-- **@neodrag/svelte** — drag & drop для workflow редактора
+## Screenshots
 
-## Структура проекта
+| Main | Workflows |
+|------|-----------|
+| ![Main](docs/img/main.png) | ![Workflows](docs/img/workflows.png) |
 
-```
-notiair/
-├── api/                    # Backend API
-│   ├── handlers/          # HTTP обработчики
-│   ├── internal/          # Внутренние модули
-│   │   ├── config/        # Конфигурация
-│   │   ├── persistence/   # Репозитории (database, outbox, serviceconfig)
-│   │   ├── queue/         # Клиент очереди (Asynq)
-│   │   ├── routing/       # Сервис маршрутизации workflow
-│   │   ├── templates/     # Доменная модель шаблонов
-│   │   ├── transport/     # Транспорты (HTTP, Telegram)
-│   │   └── workflow/      # Доменная модель workflow
-│   ├── routes/            # Регистрация маршрутов
-│   ├── services/          # Бизнес-логика
-│   └── main.go           # Точка входа
-│
-└── client/                # Frontend приложение
-    └── src/
-        ├── lib/
-        │   ├── api/       # API клиент
-        │   ├── components/# UI компоненты
-        │   ├── stores/    # Svelte stores
-        │   └── types/     # TypeScript типы
-        └── routes/        # SvelteKit страницы
-            ├── templates/ # Управление шаблонами
-            ├── workflows/ # Управление workflow
-            ├── queues/    # Мониторинг очередей
-            └── connectors/# Коннекторы (каналы Telegram — в connectors/telegram)
-```
+| Workflow editor | Connectors |
+|-----------------|------------|
+| ![Workflow editor](docs/img/workflow.png) | ![Connectors](docs/img/connectors.png) |
 
-## Быстрый старт
+| Connector setup |
+|-----------------|
+| ![Connector](docs/img/connector.png) |
 
-### Требования
+## Quick start
+
+### Prerequisites
+
 - Go 1.24+
 - PostgreSQL 14+
 - Redis 6+
-- Bun (для frontend)
-- Docker и Docker Compose (опционально, для инфраструктуры)
+- [Bun](https://bun.sh/) (frontend)
+- Docker & Docker Compose (optional, for local infra)
 
-### Запуск инфраструктуры
+### 1. Infrastructure
 
 ```bash
 cd .ops
 docker compose up -d
 ```
 
-### Настройка Backend
+### 2. Backend
 
-1. Перейдите в директорию API:
 ```bash
 cd api
-```
-
-2. Скопируйте файл с переменными окружения:
-```bash
 cp .env.example .env
 ```
 
-3. Настройте переменные окружения в `.env`:
+Edit `.env` (example):
+
 ```env
 HTTP_ADDR=:8080
 QUEUE_URL=redis://localhost:6379/0
@@ -119,85 +86,41 @@ DB_PASSWORD=postgres
 DB_NAME=notiair
 ```
 
-4. Запустите API:
 ```bash
 go run ./main.go
 ```
 
-### Настройка Frontend
+### 3. Frontend
 
-1. Перейдите в директорию клиента:
 ```bash
 cd client
-```
-
-2. Установите зависимости:
-```bash
 bun install
-```
-
-3. Запустите dev сервер:
-```bash
 bun dev
 ```
 
-Frontend будет доступен по адресу `http://localhost:5173` (или другому порту, указанному Vite).
+The app is served by Vite (typically `http://localhost:5173`).
 
-## API Endpoints
+## API (v1)
 
-### Уведомления
-- `POST /v1/notifications/dispatch` — отправка уведомления через workflow
+| Area | Method & path | Description |
+|------|----------------|-------------|
+| Notifications | `POST /v1/notifications/dispatch` | Dispatch through a workflow |
+| Templates | `GET/POST /v1/templates` | List and upsert templates |
+| Workflows | `GET/POST /v1/workflows` | List and upsert workflows |
+| Queues | `GET /v1/queues/pending` | Pending queue tasks |
 
-### Шаблоны
-- `GET /v1/templates` — список всех шаблонов
-- `POST /v1/templates` — создание/обновление шаблона
+## Development
 
-### Workflow
-- `GET /v1/workflows` — список всех workflow
-- `POST /v1/workflows` — создание/обновление workflow
+Make targets are defined under `.ops/Makefile`. From the repo root use `make -C .ops <target>` (recipes assume the working directory is `.ops` when needed).
 
-### Очереди
-- `GET /v1/queues/pending` — список задач в очереди
-
-## Основные возможности
-
-### Шаблоны сообщений
-- Создание шаблонов с переменными
-- Поддержка Markdown форматирования
-- Превью шаблонов с подстановкой переменных
-
-### Workflow Builder
-- Визуальное конструирование сценариев
-- Узлы типов: trigger, filter, action
-- Условная маршрутизация
-- Фильтрация по параметрам payload
-
-### Асинхронная доставка
-- Очередь задач на базе Asynq/Redis
-- Retry механизм для неудачных отправок
-- Outbox pattern для гарантированной доставки
-- Мониторинг статусов задач
-
-### Интеграции
-- Telegram Bot API
-- Расширяемая архитектура для добавления новых каналов
-
-## Разработка
-
-### Цели Make (`.ops/Makefile`)
-
-Из корня репозитория удобно вызывать `make -C .ops <цель>`. Команды `dev-api`, `dev-client` и `dev` рассчитаны на то, что текущий каталог при выполнении рецептов — `.ops` (поэтому используйте именно `-C .ops` или `cd .ops && make …`).
-
-| Цель | Описание |
-|------|----------|
-| `build-api` | Сборка Docker-образа API: `notiair:api-local` (`Dockerfile.api`, контекст — корень репозитория) |
-| `build-client` | Сборка Docker-образа клиента: `notiair:client-local` (`Dockerfile.client`) |
-| `build-all` | Последовательно `build-api` и `build-client` |
-| `dev-api` | Локальный запуск API: `go run ./main.go` в каталоге `api/` |
-| `dev-client` | Локальный dev-сервер фронтенда: `bun dev` в каталоге `client/` |
-| `dev` | Поднимает зависимости через `docker compose -f .ops/compose.dev.yml`, затем параллельно API и клиент; при выходе останавливает compose |
-
-Примеры:
+| Target | Description |
+|--------|----------------|
+| `build-api` | Docker image `notiair:api-local` (`Dockerfile.api`, repo root as context) |
+| `build-client` | Docker image `notiair:client-local` (`Dockerfile.client`) |
+| `build-all` | `build-api` then `build-client` |
+| `dev-api` | `go run ./main.go` in `api/` |
+| `dev-client` | `bun dev` in `client/` |
+| `dev` | `compose.dev.yml` dependencies, then API + client; stops compose on exit |
 
 ```bash
 make -C .ops build-all
@@ -205,24 +128,22 @@ make -C .ops dev-api
 make -C .ops dev
 ```
 
-### Структура модулей Backend
+### Repository layout
 
-- `internal/config` — загрузка конфигурации из переменных окружения
-- `internal/persistence/database` — подключение к PostgreSQL
-- `internal/persistence/outbox` — таблица исходящих сообщений (Outbox pattern)
-- `internal/persistence/serviceconfig` — конфигурации сервисов (тип, дефолтные настройки, активность)
-- `internal/templates` — доменная модель шаблонов (в памяти)
-- `internal/workflow` — доменная модель workflow (в памяти)
-- `internal/routing` — сервис разрешения целей по workflow
-- `internal/queue` — клиент очереди Asynq
-- `services/` — бизнес-логика (NotificationService)
-- `handlers/` — HTTP обработчики
-- `routes/` — регистрация маршрутов
+```
+notiair/
+├── api/                 # Backend
+│   ├── handlers/        # HTTP handlers
+│   ├── internal/        # config, persistence, queue, routing, templates, transport, workflow
+│   ├── routes/
+│   ├── services/
+│   └── main.go
+└── client/
+    └── src/
+        ├── lib/         # api client, components, stores, types
+        └── routes/      # templates, workflows, queues, connectors (e.g. connectors/telegram)
+```
 
-### Структура Frontend
+**Backend modules (short):** `internal/config` · `internal/persistence/*` · `internal/routing` · `internal/queue` · `services/` · `handlers/` · `routes/`  
 
-- `lib/api/` — клиент для взаимодействия с API
-- `lib/components/` — переиспользуемые компоненты (WorkflowCanvas и др.)
-- `lib/stores/` — Svelte stores для управления состоянием
-- `lib/types/` — TypeScript типы и интерфейсы
-- `routes/` — страницы приложения (SvelteKit file-based routing)
+**Frontend:** `lib/api` · `lib/components` · `lib/stores` · `lib/types` · `routes/*`
