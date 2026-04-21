@@ -1,11 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-labelledby="title">
+<!-- Match: span h-11 w-11 rounded-xl bg-accent/10 + svg h-6 w-6 fill accent (#2563eb) — client +layout -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" role="img" aria-labelledby="title">
   <title id="title">NotiAir</title>
-  <defs>
-    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#38bdf8"/>
-      <stop offset="100%" style="stop-color:#6366f1"/>
-    </linearGradient>
-  </defs>
-  <rect width="120" height="120" rx="28" fill="url(#g)"/>
-  <text x="60" y="80" font-family="ui-sans-serif,system-ui,sans-serif" font-size="52" font-weight="700" fill="#fff" text-anchor="middle">N</text>
+  <rect width="44" height="44" rx="12" fill="#2563eb" fill-opacity="0.1"/>
+  <path
+    fill="#2563eb"
+    transform="translate(10 10)"
+    d="M13.5 2a1 1 0 0 1 .894.553l6 12A1 1 0 0 1 19.5 16h-5.382l.618 5.543a1 1 0 0 1-1.872.654l-9-14A1 1 0 0 1 4.75 6H10.5l-1.118-3.276A1 1 0 0 1 10.341 2H13.5Z"
+  />
 </svg>

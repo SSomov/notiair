@@ -1,7 +1,8 @@
 <div align="center">
-  <img src="docs/img/logo.svg" alt="NotiAir" width="96" height="96"/>
-  <h1>NotiAir</h1>
-  <p><strong>Система управления уведомлениями: визуальные workflow, шаблоны сообщений и асинхронная доставка.</strong></p>
+  <img src="docs/img/logo.svg" alt="NotiAir" width="88" height="88"/>
+  <p class="text-xs font-semibold uppercase tracking-[0.45em] text-accent" style="margin:0.25rem 0 0;color:#2563eb">NotiAir</p>
+  <p class="text-xs uppercase tracking-[0.3em] text-muted" style="margin:0.35rem 0 0;color:#64748b;font-size:0.75rem;letter-spacing:0.3em;text-transform:uppercase">Notification Service</p>
+  <p style="margin:0.75rem 0 0;max-width:36rem;line-height:1.45;color:#475569;">Оркестрация уведомлений: визуальные workflow, шаблоны сообщений и надёжная асинхронная доставка.</p>
   <p>
     <a href="./README.md">English</a>
   </p>
