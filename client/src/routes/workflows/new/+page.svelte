@@ -735,6 +735,8 @@
 				get(t)('workflowBuilder.newStorage'))
 			: '';
 
+	$: workspaceZoomPercent = Math.round(workspaceZoom * 100);
+
 	function openTriggerPayloadEdit(nodeId: string) {
 		editingTriggerNodeId = nodeId;
 		triggerPayloadParseError = null;
@@ -1523,50 +1525,67 @@
 						<path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 0 1-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
 					</svg>
 				</button>
+
+				<div class="toolbar-divider" aria-hidden="true"></div>
+
 				<button
 					type="button"
-					class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm"
+					class="toolbar-icon-btn"
+					class:toolbar-icon-btn-active={workspaceExpanded}
 					on:click={handleToggleWorkspaceExpand}
 					aria-pressed={workspaceExpanded}
+					title={workspaceExpanded
+						? $t('workflowBuilder.collapseWorkspace')
+						: $t('workflowBuilder.expandWorkspace')}
 					aria-label={workspaceExpanded
 						? $t('workflowBuilder.collapseWorkspaceAria')
 						: $t('workflowBuilder.expandWorkspaceAria')}
 				>
-					{workspaceExpanded
-						? $t('workflowBuilder.collapseWorkspace')
-						: $t('workflowBuilder.expandWorkspace')}
+					{#if workspaceExpanded}
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M9 9 4.5 4.5M9 15l-4.5 4.5M15 9l4.5-4.5M15 15l4.5 4.5M21 3l-5.25 5.25M3 21l5.25-5.25M21 21l-5.25-5.25M3 3l5.25 5.25" />
+						</svg>
+					{:else}
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+						</svg>
+					{/if}
 				</button>
-				<div
-					class="flex items-center gap-1 border-l border-border pl-3 ml-0.5"
-					role="group"
-					aria-label={$t('workflowBuilder.zoomControlsAria')}
-				>
+
+				<div class="toolbar-zoom-group" role="group" aria-label={$t('workflowBuilder.zoomControlsAria')}>
 					<button
 						type="button"
-						class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm min-w-[2.25rem] px-2"
+						class="toolbar-icon-btn"
 						on:click={handleWorkspaceZoomOut}
 						disabled={workspaceZoom <= WORKSPACE_ZOOM_MIN}
+						title={$t('workflowBuilder.zoomOutAria')}
 						aria-label={$t('workflowBuilder.zoomOutAria')}
 					>
-						−
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
+							<path stroke-linecap="round" d="M5 12h14" />
+						</svg>
 					</button>
 					<button
 						type="button"
-						class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm px-2.5"
+						class="toolbar-icon-btn toolbar-zoom-percent"
 						on:click={handleWorkspaceZoomReset}
 						disabled={workspaceZoom === 1}
+						title={$t('workflowBuilder.zoomResetAria')}
 						aria-label={$t('workflowBuilder.zoomResetAria')}
 					>
-						{$t('workflowBuilder.zoomReset')}
+						{workspaceZoomPercent}%
 					</button>
 					<button
 						type="button"
-						class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm min-w-[2.25rem] px-2"
+						class="toolbar-icon-btn"
 						on:click={handleWorkspaceZoomIn}
 						disabled={workspaceZoom >= WORKSPACE_ZOOM_MAX}
+						title={$t('workflowBuilder.zoomInAria')}
 						aria-label={$t('workflowBuilder.zoomInAria')}
 					>
-						+
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
+							<path stroke-linecap="round" d="M12 5v14M5 12h14" />
+						</svg>
 					</button>
 				</div>
 			</div>
@@ -2578,10 +2597,43 @@
 		cursor: pointer;
 	}
 
-	.toolbar-icon-btn:hover {
+	.toolbar-icon-btn:hover:not(:disabled) {
 		color: #2563eb;
 		border-color: rgba(37, 99, 235, 0.5);
 		background: rgba(37, 99, 235, 0.08);
+	}
+
+	.toolbar-icon-btn:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
+	}
+
+	.toolbar-icon-btn-active {
+		color: #2563eb;
+		border-color: rgba(37, 99, 235, 0.5);
+		background: rgba(37, 99, 235, 0.12);
+	}
+
+	.toolbar-divider {
+		width: 1px;
+		height: 1.5rem;
+		margin: 0 0.25rem;
+		background: rgba(148, 163, 184, 0.45);
+		flex-shrink: 0;
+	}
+
+	.toolbar-zoom-group {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+	}
+
+	.toolbar-zoom-percent {
+		min-width: 3rem;
+		padding: 0 0.375rem;
+		font-size: 0.75rem;
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
 	}
 
 	.toolbar-dropdown {
