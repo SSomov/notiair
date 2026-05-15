@@ -26,6 +26,13 @@ import type {
 	WorkflowVersion,
 	WorkflowVersionMeta,
 } from "$lib/types/workflow";
+import {
+	buildWorkflowPersistPayload,
+	clampWorkspaceZoom,
+	WORKSPACE_ZOOM_MAX,
+	WORKSPACE_ZOOM_MIN,
+	workflowEditorStateFingerprint,
+} from "$lib/workflow/editorStateFingerprint";
 
 type TriggerOption = {
 	name: string;
@@ -97,12 +104,11 @@ let workspaceElement: HTMLDivElement;
 let workspaceCanvasScaleElement: HTMLDivElement;
 let workspaceExpanded = false;
 let workspaceZoom = 1;
-const WORKSPACE_ZOOM_MIN = 0.25;
-const WORKSPACE_ZOOM_MAX = 2;
 const WORKSPACE_ZOOM_STEP = 0.1;
 
-const clampWorkspaceZoom = (z: number) =>
-	Math.min(WORKSPACE_ZOOM_MAX, Math.max(WORKSPACE_ZOOM_MIN, z));
+/** null — baseline ещё не зафиксирован (до onMount / загрузки) */
+let savedStateFingerprint: string | null = null;
+let isDirty = false;
 
 /** После смены scale у холста getBoundingClientRect в том же кадре может быть от старого layout — пересчитываем рёбра после reflow. */
 const bumpWorkspaceLayout = () => {
@@ -227,6 +233,34 @@ $: {
 	triggerPayloadErrorDisplay = triggerPayloadParseError
 		? formatJsonParseError(triggerPayloadParseError)
 		: null;
+}
+
+$: {
+	$locale;
+	isDirty =
+		!loading &&
+		savedStateFingerprint !== null &&
+		workflowEditorStateFingerprint({
+			workflowName,
+			workflowDescription,
+			isActive,
+			workspaceZoom,
+			defaultNewWorkflowName: get(t)("workflows.newWorkflow"),
+			nodes,
+			edges,
+		}) !== savedStateFingerprint;
+}
+
+function syncSavedBaseline() {
+	savedStateFingerprint = workflowEditorStateFingerprint({
+		workflowName,
+		workflowDescription,
+		isActive,
+		workspaceZoom,
+		defaultNewWorkflowName: get(t)("workflows.newWorkflow"),
+		nodes,
+		edges,
+	});
 }
 
 function formatJsonParseError(parseError: {
@@ -1252,6 +1286,8 @@ async function applyWorkflowFromAPI(workflow: WorkflowDraft) {
 		workspaceZoom = clampWorkspaceZoom(workflow.canvasZoom);
 		bumpWorkspaceLayout();
 	}
+
+	syncSavedBaseline();
 }
 
 function formatVersionDate(iso: string): string {
@@ -1329,6 +1365,8 @@ onMount(async () => {
 	const id = $page.url.searchParams.get("id");
 	if (!id) {
 		workflowName = get(t)("workflows.newWorkflow");
+		await tick();
+		syncSavedBaseline();
 	}
 	if (id) {
 		workflowId = id;
@@ -1352,65 +1390,19 @@ async function saveWorkflowToAPI() {
 		saving = true;
 		error = null;
 
-		// Преобразуем edges, убеждаясь что они валидны
-		const edgesData = edges
-			.filter((edge) => edge.from?.nodeId && edge.to?.nodeId)
-			.map((edge) => ({
-				from: edge.from.nodeId,
-				to: edge.to.nodeId,
-			}));
+		const persistBody = buildWorkflowPersistPayload({
+			workflowName,
+			workflowDescription,
+			isActive,
+			workspaceZoom,
+			defaultNewWorkflowName: get(t)("workflows.newWorkflow"),
+			nodes,
+			edges,
+		});
 
-		const workflowData = {
+		const workflowData: WorkflowDraft = {
+			...persistBody,
 			id: workflowId || crypto.randomUUID(),
-			name: workflowName.trim() || get(t)("workflows.newWorkflow"),
-			description: workflowDescription.trim(),
-			nodes: nodes.map((node) => ({
-				id: node.id,
-				type: node.variant === "trigger" ? "trigger" : "action",
-				position: {
-					x: node.position.x,
-					y: node.position.y,
-				},
-				config: {
-					label: node.label,
-					description: node.description,
-					variant: node.variant,
-					...(node.variant === "channel" && node.selectedChannelId
-						? {
-								channelId: node.selectedChannelId,
-								channelName: node.selectedChannelName,
-								connectorId: node.selectedChannelConnectorId,
-								connectorType: node.selectedChannelConnectorType,
-							}
-						: {}),
-					...(node.variant === "template" &&
-					(node.templateBody || node.templatePayload)
-						? {
-								templateBody: node.templateBody,
-								templatePayload: node.templatePayload,
-							}
-						: {}),
-					...(node.variant === "trigger" && node.triggerPayload
-						? {
-								triggerPayload: node.triggerPayload,
-							}
-						: {}),
-					...(node.variant === "trigger" && node.eventTypes
-						? {
-								eventTypes: node.eventTypes,
-							}
-						: {}),
-					...(node.variant === "storage"
-						? {
-								storageMode: node.storageMode || "raw",
-							}
-						: {}),
-				},
-			})),
-			edges: edgesData,
-			filters: {},
-			isActive: isActive,
-			canvasZoom: clampWorkspaceZoom(workspaceZoom),
 		};
 
 		await saveWorkflow(workflowData);
@@ -1419,6 +1411,7 @@ async function saveWorkflowToAPI() {
 			const saved = await getWorkflow(workflowData.id);
 			workflowId = saved.id;
 		}
+		syncSavedBaseline();
 		if (historyPanelOpen) {
 			await loadVersionList();
 		}
@@ -1513,6 +1506,19 @@ onDestroy(() => {
 		{#if error}
 			<div class="rounded-lg border border-red-200 bg-red-50 p-3">
 				<p class="text-sm text-red-600">{errorDisplay}</p>
+			</div>
+		{/if}
+		{#if isDirty}
+			<div
+				class="rounded-lg border border-amber-200 bg-amber-50 p-3"
+				role="status"
+			>
+				<p class="text-sm font-medium text-amber-900">
+					{$t('workflowBuilder.unsavedChangesTitle')}
+				</p>
+				<p class="mt-1 text-sm text-amber-800">
+					{$t('workflowBuilder.unsavedChangesBody')}
+				</p>
 			</div>
 		{/if}
 	</header>

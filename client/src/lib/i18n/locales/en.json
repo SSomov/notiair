@@ -222,6 +222,8 @@
 		"editNameTitle": "Edit name",
 		"editNameAria": "Edit name",
 		"intro": "Add triggers, actions, and delivery channels. Connect nodes with lines and test before publishing.",
+		"unsavedChangesTitle": "You have unsaved changes",
+		"unsavedChangesBody": "Save the workflow before leaving this page, or your latest edits (graph, settings, and zoom) will be lost.",
 		"workflowDescriptionLabel": "Workflow description",
 		"workflowDescriptionPlaceholder": "Short note for the team: what this workflow does and when it runs.",
 		"addTemplate": "Add template",
