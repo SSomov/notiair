@@ -33,6 +33,8 @@
 
 	let workflowId: string | null = null;
 	let workflowName = '';
+	/** Описание самого workflow (не ноды на холсте) */
+	let workflowDescription = '';
 	let editingName = false;
 	let isActive = false; // По умолчанию черновик
 	let saving = false;
@@ -979,6 +981,7 @@
 				const workflow = await getWorkflow(id);
 
 				workflowName = workflow.name || get(t)('workflows.newWorkflow');
+				workflowDescription = workflow.description ?? '';
 				isActive = workflow.isActive || false;
 
 				// Преобразуем nodes из API формата в CanvasNode
@@ -1069,7 +1072,7 @@
 			const workflowData = {
 				id: workflowId || crypto.randomUUID(),
 				name: workflowName.trim() || get(t)('workflows.newWorkflow'),
-				description: '',
+				description: workflowDescription.trim(),
 				nodes: nodes.map((node) => ({
 					id: node.id,
 					type: node.variant === 'trigger' ? 'trigger' : 'action',
@@ -1191,6 +1194,18 @@
 					>
 				</label>
 			</div>
+		</div>
+		<div class="max-w-2xl space-y-1.5">
+			<label for="workflow-description" class="block text-sm font-medium text-text">
+				{$t('workflowBuilder.workflowDescriptionLabel')}
+			</label>
+			<textarea
+				id="workflow-description"
+				rows="2"
+				class="w-full resize-y rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-muted focus:border-accent focus:outline-none"
+				placeholder={$t('workflowBuilder.workflowDescriptionPlaceholder')}
+				bind:value={workflowDescription}
+			></textarea>
 		</div>
 		<p class="max-w-2xl text-sm text-muted">
 			{$t('workflowBuilder.intro')}

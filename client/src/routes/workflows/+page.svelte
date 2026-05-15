@@ -156,6 +156,9 @@
 								<p class="break-all text-xs leading-relaxed text-muted">
 									ID: {workflow.id}
 								</p>
+								{#if workflow.description}
+									<p class="text-sm leading-relaxed text-muted">{workflow.description}</p>
+								{/if}
 								<p class="text-sm leading-relaxed text-muted">
 									{$t('workflows.activeScenarios.description')}
 								</p>

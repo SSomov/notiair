@@ -216,6 +216,8 @@
 		"editNameTitle": "Edit name",
 		"editNameAria": "Edit name",
 		"intro": "Add triggers, actions, and delivery channels. Connect nodes with lines and test before publishing.",
+		"workflowDescriptionLabel": "Workflow description",
+		"workflowDescriptionPlaceholder": "Short note for the team: what this workflow does and when it runs.",
 		"addTemplate": "Add template",
 		"addChannel": "Add channel",
 		"workspaceAria": "Workflow canvas",
