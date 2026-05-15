@@ -12,6 +12,25 @@ export type WorkflowEdge = {
 	to: string;
 };
 
+export type WorkflowVersionMeta = {
+	id: string;
+	workflowId: string;
+	versionNumber: number;
+	source: "save" | "restore";
+	createdAt: string;
+	isActive: boolean;
+	name: string;
+};
+
+export type WorkflowVersion = WorkflowVersionMeta & {
+	description?: string;
+	nodes: WorkflowNode[];
+	edges: WorkflowEdge[];
+	filters: Record<string, string>;
+	canvasZoom?: number;
+	restoredFromVersionId?: string;
+};
+
 export type WorkflowDraft = {
 	id: string;
 	name: string;

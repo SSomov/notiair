@@ -28,6 +28,9 @@ type Repository interface {
 	FindByID(ctx context.Context, id string) (WorkflowEntity, error)
 	List(ctx context.Context) ([]WorkflowEntity, error)
 	Delete(ctx context.Context, id string) error
+	ListVersions(ctx context.Context, workflowID string) ([]VersionMeta, error)
+	FindVersionByID(ctx context.Context, workflowID, versionID string) (WorkflowVersionEntity, error)
+	RestoreVersion(ctx context.Context, workflowID, versionID string) (WorkflowEntity, error)
 }
 
 type SaveInput struct {
@@ -51,64 +54,68 @@ func NewRepository(db *gorm.DB) Repository {
 
 func (r *repository) Save(ctx context.Context, input SaveInput) (WorkflowEntity, error) {
 	var entity WorkflowEntity
-	
-	// Determine ID: use provided ID or generate new one
+
 	workflowID := input.ID
 	if workflowID == "" {
 		workflowID = uuid.NewString()
 	}
 
-	// Try to find existing workflow
-	err := r.db.WithContext(ctx).Where("id = ?", workflowID).First(&entity).Error
-	isNew := errors.Is(err, gorm.ErrRecordNotFound)
-
-	if isNew {
-		// Create new workflow
-		entity = WorkflowEntity{
-			ID:          workflowID,
-			Name:        input.Name,
-			Description: input.Description,
-			Nodes:       datatypes.JSON(input.Nodes),
-			Edges:       datatypes.JSON(input.Edges),
-			Filters:     datatypes.JSONMap{},
-			IsActive:    input.IsActive,
-			CanvasZoom:  input.CanvasZoom,
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		err := tx.Where("id = ?", workflowID).First(&entity).Error
+		isNew := errors.Is(err, gorm.ErrRecordNotFound)
+		if err != nil && !isNew {
+			return err
 		}
+
+		filters := datatypes.JSONMap{}
 		for k, v := range input.Filters {
-			entity.Filters[k] = v
+			filters[k] = v
 		}
 
-		if err := r.db.WithContext(ctx).Create(&entity).Error; err != nil {
-			return WorkflowEntity{}, err
-		}
-	} else {
-		// Update existing workflow
-		entity.Name = input.Name
-		entity.Description = input.Description
-		entity.Nodes = datatypes.JSON(input.Nodes)
-		entity.Edges = datatypes.JSON(input.Edges)
-		entity.IsActive = input.IsActive
-		entity.CanvasZoom = input.CanvasZoom
-		entity.Filters = datatypes.JSONMap{}
-		for k, v := range input.Filters {
-			entity.Filters[k] = v
+		if isNew {
+			entity = WorkflowEntity{
+				ID:          workflowID,
+				Name:        input.Name,
+				Description: input.Description,
+				Nodes:       datatypes.JSON(input.Nodes),
+				Edges:       datatypes.JSON(input.Edges),
+				Filters:     filters,
+				IsActive:    input.IsActive,
+				CanvasZoom:  input.CanvasZoom,
+			}
+			if err := tx.Create(&entity).Error; err != nil {
+				return err
+			}
+		} else {
+			entity.Name = input.Name
+			entity.Description = input.Description
+			entity.Nodes = datatypes.JSON(input.Nodes)
+			entity.Edges = datatypes.JSON(input.Edges)
+			entity.IsActive = input.IsActive
+			entity.CanvasZoom = input.CanvasZoom
+			entity.Filters = filters
+
+			if err := tx.Model(&entity).Updates(map[string]interface{}{
+				"name":        entity.Name,
+				"description": entity.Description,
+				"nodes":       entity.Nodes,
+				"edges":       entity.Edges,
+				"filters":     entity.Filters,
+				"is_active":   entity.IsActive,
+				"canvas_zoom": entity.CanvasZoom,
+			}).Error; err != nil {
+				return err
+			}
 		}
 
-		// Use Updates to ensure JSONB fields are properly updated
-		if err := r.db.WithContext(ctx).Model(&entity).Updates(map[string]interface{}{
-			"name":         entity.Name,
-			"description":  entity.Description,
-			"nodes":        entity.Nodes,
-			"edges":        entity.Edges,
-			"filters":      entity.Filters,
-			"is_active":    entity.IsActive,
-			"canvas_zoom":  entity.CanvasZoom,
-		}).Error; err != nil {
-			return WorkflowEntity{}, err
-		}
+		return r.createVersionSnapshot(ctx, tx, entity, VersionSourceSave, nil)
+	})
+	if err != nil {
+		return WorkflowEntity{}, err
 	}
 
-	return entity, nil
+	// Reload to get updated timestamps
+	return r.FindByID(ctx, entity.ID)
 }
 
 func (r *repository) FindByID(ctx context.Context, id string) (WorkflowEntity, error) {
@@ -128,9 +135,13 @@ func (r *repository) List(ctx context.Context) ([]WorkflowEntity, error) {
 }
 
 func (r *repository) Delete(ctx context.Context, id string) error {
-	if err := r.db.WithContext(ctx).Where("id = ?", id).Delete(&WorkflowEntity{}).Error; err != nil {
-		return err
-	}
-	return nil
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("workflow_id = ?", id).Delete(&WorkflowVersionEntity{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("id = ?", id).Delete(&WorkflowEntity{}).Error; err != nil {
+			return err
+		}
+		return nil
+	})
 }
-

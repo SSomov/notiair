@@ -20,13 +20,14 @@ type Task struct {
 	MessageID  string            `json:"messageId"`
 }
 
-// Service отвечает за выбор каналов на основе workflow и фильтров события.
+// Service отвечает за выбор каналов на основе workflow graph.
 type Service struct {
-	wfRepo WorkflowRepository
+	wfRepo     WorkflowRepository
+	storageSvc StorageSaver
 }
 
-func NewService(repo WorkflowRepository) *Service {
-	return &Service{wfRepo: repo}
+func NewService(repo WorkflowRepository, storageSvc StorageSaver) *Service {
+	return &Service{wfRepo: repo, storageSvc: storageSvc}
 }
 
 func (s *Service) ResolveTargets(ctx context.Context, workflowID string, payload map[string]any) ([]Task, error) {
@@ -35,7 +36,23 @@ func (s *Service) ResolveTargets(ctx context.Context, workflowID string, payload
 		return nil, err
 	}
 
-	// TODO: внедрить реальную логику фильтрации и маршрутизации
+	if s.storageSvc == nil {
+		return nil, fmt.Errorf("storage service not configured")
+	}
+
+	tasks, err := executeGraph(ctx, wf, workflowID, payload, s.storageSvc)
+	if err != nil {
+		// Fallback to legacy filters map if graph has no channels but filters exist
+		if len(wf.Filters) > 0 {
+			return s.resolveFromFilters(workflowID, payload, wf), nil
+		}
+		return nil, err
+	}
+
+	return tasks, nil
+}
+
+func (s *Service) resolveFromFilters(workflowID string, payload map[string]any, wf workflow.Workflow) []Task {
 	tasks := make([]Task, 0, len(wf.Filters))
 	for channelID := range wf.Filters {
 		tasks = append(tasks, Task{
@@ -44,10 +61,5 @@ func (s *Service) ResolveTargets(ctx context.Context, workflowID string, payload
 			Payload:    payload,
 		})
 	}
-
-	if len(tasks) == 0 {
-		return nil, fmt.Errorf("no routing targets for workflow %s", workflowID)
-	}
-
-	return tasks, nil
+	return tasks
 }

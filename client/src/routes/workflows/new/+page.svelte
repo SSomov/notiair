@@ -9,13 +9,24 @@
 	import {
 		saveWorkflow,
 		getWorkflow,
+		listWorkflowVersions,
+		getWorkflowVersion,
+		restoreWorkflowVersion,
 		listTelegramTokens,
 		listSmtpAccounts,
 		listChannels,
 		dispatchNotification,
+		listStorageRecords,
+		getStorageRecord,
+		deleteStorageRecord,
 		type Channel,
+		type StorageRecordListItem,
 	} from '$lib/api';
-	import type { WorkflowDraft } from '$lib/types/workflow';
+	import type {
+		WorkflowDraft,
+		WorkflowVersion,
+		WorkflowVersionMeta,
+	} from '$lib/types/workflow';
 	import TelegramIcon from '$lib/components/TelegramIcon.svelte';
 
 	type TriggerOption = {
@@ -38,10 +49,18 @@
 	let editingName = false;
 	let isActive = false; // По умолчанию черновик
 	let saving = false;
+	let historyPanelOpen = false;
+	let versions: WorkflowVersionMeta[] = [];
+	let versionsLoading = false;
+	let selectedVersionId: string | null = null;
+	let previewVersion: WorkflowVersion | null = null;
+	let previewLoading = false;
+	let restoringVersion = false;
 	let loading = false;
 	let error: string | null = null;
 
-	type NodeVariant = 'trigger' | 'template' | 'channel';
+	type StorageMode = 'raw' | 'rendered';
+	type NodeVariant = 'trigger' | 'template' | 'storage' | 'channel';
 	type PortType = 'left' | 'right';
 
 	type CanvasNode = {
@@ -58,6 +77,7 @@
 		templatePayload?: Record<string, any>;
 		triggerPayload?: Record<string, any>;
 		eventTypes?: string[];
+		storageMode?: StorageMode;
 	};
 
 	type Edge = {
@@ -129,6 +149,18 @@
 	let templatePayloadJson = '{}';
 	let templatePayload: Record<string, any> = {};
 	let templatePayloadError: string | null = null;
+
+	let storageEditModalOpen = false;
+	let editingStorageNodeId: string | null = null;
+	let storageModeDraft: StorageMode = 'raw';
+
+	let storageRecordsModalOpen = false;
+	let viewingStorageNodeId: string | null = null;
+	let storageRecords: StorageRecordListItem[] = [];
+	let loadingStorageRecords = false;
+	let storageRecordDetailOpen = false;
+	let storageRecordDetailContent = '';
+	let storageRecordDetailTitle = '';
 
 	// Состояние для редактирования payload триггера
 	let triggerPayloadModalOpen = false;
@@ -618,6 +650,133 @@
 		nodes = [...nodes, newTemplate];
 	}
 
+	function addStorageNode() {
+		const storageCount = nodes.filter((n) => n.variant === 'storage').length;
+		const tr = get(t);
+		const newStorage: CanvasNode = {
+			id: generateNodeId('storage'),
+			label: tr('workflowBuilder.newStorage'),
+			description: tr('workflowBuilder.newStorage'),
+			variant: 'storage',
+			storageMode: 'raw',
+			position: { x: 300 + storageCount * 280, y: 200 + storageCount * 80 },
+		};
+		nodes = [...nodes, newStorage];
+	}
+
+	function openStorageEdit(nodeId: string) {
+		editingStorageNodeId = nodeId;
+		const node = nodes.find((n) => n.id === nodeId);
+		storageModeDraft = node?.storageMode ?? 'raw';
+		storageEditModalOpen = true;
+	}
+
+	function closeStorageEdit() {
+		storageEditModalOpen = false;
+		editingStorageNodeId = null;
+	}
+
+	function saveStorageConfig() {
+		if (!editingStorageNodeId) return;
+		const tr = get(t);
+		nodes = nodes.map((node) => {
+			if (node.id !== editingStorageNodeId) return node;
+			const modeLabel =
+				storageModeDraft === 'rendered'
+					? tr('workflowBuilder.storageModeRendered')
+					: tr('workflowBuilder.storageModeRaw');
+			return {
+				...node,
+				storageMode: storageModeDraft,
+				description: `${tr('workflowBuilder.storagePrefix')} ${modeLabel}`,
+			};
+		});
+		closeStorageEdit();
+	}
+
+	async function openStorageRecords(nodeId: string) {
+		if (!workflowId) {
+			error = 'errors.saveWorkflowFirst';
+			return;
+		}
+		viewingStorageNodeId = nodeId;
+		storageRecordsModalOpen = true;
+		await refreshStorageRecords();
+	}
+
+	function closeStorageRecords() {
+		storageRecordsModalOpen = false;
+		viewingStorageNodeId = null;
+		storageRecords = [];
+	}
+
+	async function refreshStorageRecords() {
+		if (!workflowId || !viewingStorageNodeId) return;
+		loadingStorageRecords = true;
+		try {
+			storageRecords = await listStorageRecords(workflowId, viewingStorageNodeId, {
+				limit: 20,
+			});
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'errors.loadStorageRecords';
+			storageRecords = [];
+		} finally {
+			loadingStorageRecords = false;
+		}
+	}
+
+	async function viewStorageRecord(recordId: string) {
+		if (!workflowId) return;
+		try {
+			const rec = await getStorageRecord(workflowId, recordId);
+			storageRecordDetailTitle = rec.id;
+			storageRecordDetailContent = rec.data;
+			storageRecordDetailOpen = true;
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'errors.loadStorageRecord';
+		}
+	}
+
+	async function downloadStorageRecord(record: StorageRecordListItem) {
+		if (!workflowId) return;
+		try {
+			const rec = await getStorageRecord(workflowId, record.id);
+			const blob = new Blob([rec.data], {
+				type: rec.contentType || 'application/octet-stream',
+			});
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = `storage-${record.id}.txt`;
+			a.click();
+			URL.revokeObjectURL(url);
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'errors.loadStorageRecord';
+		}
+	}
+
+	async function removeStorageRecord(recordId: string) {
+		if (!workflowId) return;
+		try {
+			await deleteStorageRecord(workflowId, recordId);
+			await refreshStorageRecords();
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'errors.deleteStorageRecord';
+		}
+	}
+
+	function closeStorageRecordDetail() {
+		storageRecordDetailOpen = false;
+		storageRecordDetailContent = '';
+		storageRecordDetailTitle = '';
+	}
+
+	function formatStorageSize(bytes: number): string {
+		if (bytes < 1024) return `${bytes} B`;
+		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+	}
+
 	function openTriggerPayloadEdit(nodeId: string) {
 		editingTriggerNodeId = nodeId;
 		const node = nodes.find((n) => n.id === nodeId);
@@ -967,6 +1126,143 @@
 		editingName = false;
 	}
 
+	async function applyWorkflowFromAPI(workflow: WorkflowDraft) {
+		workflowName = workflow.name || get(t)('workflows.newWorkflow');
+		workflowDescription = workflow.description ?? '';
+		isActive = workflow.isActive || false;
+
+		nodes = (workflow.nodes || []).map((node) => {
+			const config = node.config as Record<string, unknown>;
+			const variant = (config?.variant || node.type) as NodeVariant;
+			return {
+				id: node.id,
+				label: (config?.label as string) || node.id,
+				description: (config?.description as string) || '',
+				variant: variant,
+				position: node.position || { x: 0, y: 0 },
+				...(variant === 'channel' && config?.channelId
+					? {
+							selectedChannelId: config.channelId as string,
+							selectedChannelName: (config.channelName as string) || (config.channelId as string),
+							selectedChannelConnectorId: config.connectorId as string,
+							selectedChannelConnectorType:
+								(config.connectorType as CanvasNode['selectedChannelConnectorType']) ||
+								(config.channelId === config.connectorId ? 'smtp' : 'telegram'),
+						}
+					: {}),
+				...(variant === 'template' && (config?.templateBody || config?.templatePayload)
+					? {
+							templateBody: (config.templateBody as string) || '',
+							templatePayload: (config.templatePayload as Record<string, unknown>) || {},
+						}
+					: {}),
+				...(variant === 'storage'
+					? {
+							storageMode: (config?.storageMode as StorageMode) || 'raw',
+						}
+					: {}),
+				...(variant === 'trigger' && config?.triggerPayload
+					? {
+							triggerPayload: (config.triggerPayload as Record<string, unknown>) || {},
+						}
+					: {}),
+				...(variant === 'trigger' && config?.eventTypes
+					? {
+							eventTypes: (config.eventTypes as string[]) || [],
+						}
+					: {}),
+			};
+		});
+
+		await tick();
+		await new Promise((resolve) => setTimeout(resolve, 100));
+
+		edges = (workflow.edges || []).map((edge, index) => ({
+			id: `${edge.from}-${edge.to}-${index}`,
+			from: { nodeId: edge.from, port: 'right' as PortType },
+			to: { nodeId: edge.to, port: 'left' as PortType },
+		}));
+
+		edges = [...edges];
+		nodes = [...nodes];
+
+		if (typeof workflow.canvasZoom === 'number' && Number.isFinite(workflow.canvasZoom)) {
+			workspaceZoom = clampWorkspaceZoom(workflow.canvasZoom);
+			bumpWorkspaceLayout();
+		}
+	}
+
+	function formatVersionDate(iso: string): string {
+		try {
+			return new Date(iso).toLocaleString(get(locale));
+		} catch {
+			return iso;
+		}
+	}
+
+	async function openHistoryPanel() {
+		if (!workflowId) return;
+		historyPanelOpen = true;
+		selectedVersionId = null;
+		previewVersion = null;
+		await loadVersionList();
+	}
+
+	function closeHistoryPanel() {
+		historyPanelOpen = false;
+		selectedVersionId = null;
+		previewVersion = null;
+	}
+
+	async function loadVersionList() {
+		if (!workflowId) return;
+		versionsLoading = true;
+		try {
+			versions = await listWorkflowVersions(workflowId);
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'errors.loadWorkflowVersions';
+		} finally {
+			versionsLoading = false;
+		}
+	}
+
+	async function selectVersionForPreview(versionId: string) {
+		if (!workflowId) return;
+		selectedVersionId = versionId;
+		previewLoading = true;
+		previewVersion = null;
+		try {
+			previewVersion = await getWorkflowVersion(workflowId, versionId);
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'errors.loadWorkflowVersion';
+		} finally {
+			previewLoading = false;
+		}
+	}
+
+	async function handleRestoreVersion(version: WorkflowVersionMeta) {
+		if (!workflowId || restoringVersion) return;
+
+		const confirmKey = isActive
+			? 'workflowHistory.confirmRestoreActive'
+			: 'workflowHistory.confirmRestore';
+		if (!confirm(get(t)(confirmKey, { number: version.versionNumber }))) {
+			return;
+		}
+
+		restoringVersion = true;
+		error = null;
+		try {
+			const restored = await restoreWorkflowVersion(workflowId, version.id);
+			await applyWorkflowFromAPI(restored);
+			closeHistoryPanel();
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'errors.restoreWorkflowVersion';
+		} finally {
+			restoringVersion = false;
+		}
+	}
+
 	onMount(async () => {
 		selectedTrigger = get(t)('workflowBuilder.addTrigger');
 		const id = $page.url.searchParams.get('id');
@@ -979,73 +1275,7 @@
 				loading = true;
 				error = null;
 				const workflow = await getWorkflow(id);
-
-				workflowName = workflow.name || get(t)('workflows.newWorkflow');
-				workflowDescription = workflow.description ?? '';
-				isActive = workflow.isActive || false;
-
-				// Преобразуем nodes из API формата в CanvasNode
-				nodes = (workflow.nodes || []).map((node) => {
-					const config = node.config as any;
-					const variant = (config?.variant || node.type) as NodeVariant;
-					return {
-						id: node.id,
-						label: config?.label || node.id,
-						description: config?.description || '',
-						variant: variant,
-						position: node.position || { x: 0, y: 0 },
-						...(variant === 'channel' && config?.channelId
-							? {
-									selectedChannelId: config.channelId,
-									selectedChannelName: config.channelName || config.channelId,
-									selectedChannelConnectorId: config.connectorId,
-									selectedChannelConnectorType:
-										(config.connectorType as CanvasNode['selectedChannelConnectorType']) ||
-										(config.channelId === config.connectorId ? 'smtp' : 'telegram'),
-								}
-							: {}),
-						...(variant === 'template' && (config?.templateBody || config?.templatePayload)
-							? {
-									templateBody: config.templateBody || '',
-									templatePayload: config.templatePayload || {},
-								}
-							: {}),
-						...(variant === 'trigger' && config?.triggerPayload
-							? {
-									triggerPayload: config.triggerPayload || {},
-								}
-							: {}),
-						...(variant === 'trigger' && config?.eventTypes
-							? {
-									eventTypes: config.eventTypes || [],
-								}
-							: {}),
-					};
-				});
-
-				// Ждем, пока nodes отрендерятся, перед загрузкой edges
-				await tick();
-				// Дополнительная задержка для гарантии рендера
-				await new Promise((resolve) => setTimeout(resolve, 100));
-
-				// Преобразуем edges из API формата в Edge
-				edges = (workflow.edges || []).map((edge, index) => ({
-					id: `${edge.from}-${edge.to}-${index}`,
-					from: { nodeId: edge.from, port: 'right' as PortType },
-					to: { nodeId: edge.to, port: 'left' as PortType },
-				}));
-
-				// Принудительно обновляем реактивность
-				edges = [...edges];
-				nodes = [...nodes];
-
-				if (
-					typeof workflow.canvasZoom === 'number' &&
-					Number.isFinite(workflow.canvasZoom)
-				) {
-					workspaceZoom = clampWorkspaceZoom(workflow.canvasZoom);
-					bumpWorkspaceLayout();
-				}
+				await applyWorkflowFromAPI(workflow);
 			} catch (e) {
 				error = e instanceof Error ? e.message : 'errors.loadWorkflow';
 			} finally {
@@ -1108,6 +1338,11 @@
 									eventTypes: node.eventTypes,
 								}
 							: {}),
+						...(node.variant === 'storage'
+							? {
+									storageMode: node.storageMode || 'raw',
+								}
+							: {}),
 					},
 				})),
 				edges: edgesData,
@@ -1121,6 +1356,9 @@
 			if (!workflowId) {
 				const saved = await getWorkflow(workflowData.id);
 				workflowId = saved.id;
+			}
+			if (historyPanelOpen) {
+				await loadVersionList();
 			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'errors.saveWorkflow';
@@ -1308,10 +1546,27 @@
 				<button
 					type="button"
 					class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm"
+					on:click={addStorageNode}
+				>
+					{$t('workflowBuilder.addStorage')}
+				</button>
+				<button
+					type="button"
+					class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm"
 					on:click={addChannelNode}
 				>
 					{$t('workflowBuilder.addChannel')}
 				</button>
+				{#if workflowId}
+					<button
+						type="button"
+						class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm"
+						on:click={openHistoryPanel}
+						aria-label={$t('workflowHistory.openAria')}
+					>
+						{$t('workflowHistory.open')}
+					</button>
+				{/if}
 				<button
 					type="button"
 					class="btn-primary bg-accent text-white shadow-sm hover:shadow-md"
@@ -1511,6 +1766,59 @@
 							</svg>
 						</button>
 					{/if}
+					{#if node.variant === 'storage'}
+						<div class="storage-node-actions">
+							<button
+								type="button"
+								class="edit-channel-btn"
+								aria-label={$t('workflowBuilder.editStorageAria')}
+								title={$t('workflowBuilder.editStorageTitle')}
+								on:click={(e) => {
+									e.stopPropagation();
+									openStorageEdit(node.id);
+								}}
+							>
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.5"
+									class="h-4 w-4"
+								>
+									<path
+										d="M16.862 3.487 20.51 7.136a1.5 1.5 0 0 1 0 2.121l-9.193 9.193-4.593.511a1 1 0 0 1-1.1-1.1l.511-4.593 9.193-9.193a1.5 1.5 0 0 1 2.121 0Z"
+									/>
+									<path d="M19 11.5 12.5 5" />
+								</svg>
+							</button>
+							<button
+								type="button"
+								class="edit-channel-btn"
+								aria-label={$t('workflowBuilder.viewRecordsAria')}
+								title={$t('workflowBuilder.viewRecordsTitle')}
+								on:click={(e) => {
+									e.stopPropagation();
+									openStorageRecords(node.id);
+								}}
+							>
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.5"
+									class="h-4 w-4"
+								>
+									<path
+										d="M4 7h16v13H4V7Zm2-4h12v2H6V3Zm4 8v4m-2-2h4"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									/>
+								</svg>
+							</button>
+						</div>
+					{/if}
 					{#if node.variant === 'trigger' && node.label === 'Stream broker'}
 						<button
 							type="button"
@@ -1629,6 +1937,93 @@
 </section>
 
 <!-- Модальное окно редактирования template -->
+{#if historyPanelOpen}
+	<!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+	<div
+		class="history-overlay"
+		role="presentation"
+		on:click={closeHistoryPanel}
+		on:keydown={(e) => e.key === 'Escape' && closeHistoryPanel()}
+	>
+		<aside
+			class="history-panel"
+			role="dialog"
+			aria-label={$t('workflowHistory.title')}
+			on:click|stopPropagation
+			on:keydown|stopPropagation
+		>
+			<header class="history-panel-header">
+				<h2 class="history-panel-title">{$t('workflowHistory.title')}</h2>
+				<button type="button" class="icon-btn" on:click={closeHistoryPanel}>
+					{$t('workflowHistory.close')}
+				</button>
+			</header>
+
+			<div class="history-panel-body">
+				{#if versionsLoading}
+					<p class="text-sm text-muted">{$t('workflowHistory.loading')}</p>
+				{:else if versions.length === 0}
+					<p class="text-sm text-muted">{$t('workflowHistory.empty')}</p>
+				{:else}
+					<ul class="history-version-list">
+						{#each versions as version (version.id)}
+							<li
+								class="history-version-item"
+								class:history-version-item-selected={selectedVersionId === version.id}
+							>
+								<button
+									type="button"
+									class="history-version-main"
+									on:click={() => selectVersionForPreview(version.id)}
+								>
+									<span class="history-version-number">
+										{$t('workflowHistory.versionLabel', { number: version.versionNumber })}
+									</span>
+									<span class="history-version-meta">
+										{formatVersionDate(version.createdAt)}
+										·
+										{version.source === 'restore'
+											? $t('workflowHistory.sourceRestore')
+											: $t('workflowHistory.sourceSave')}
+									</span>
+									<span class="history-version-name">{version.name}</span>
+								</button>
+								<button
+									type="button"
+									class="btn-secondary history-restore-btn"
+									on:click={() => handleRestoreVersion(version)}
+									disabled={restoringVersion}
+								>
+									{$t('workflowHistory.restore')}
+								</button>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+
+				{#if previewLoading}
+					<p class="text-sm text-muted mt-4">{$t('workflowHistory.loading')}</p>
+				{:else if previewVersion}
+					<div class="history-preview">
+						<h3 class="history-preview-title">{$t('workflowHistory.previewTitle')}</h3>
+						<p class="text-sm font-medium text-text">{previewVersion.name}</p>
+						<p class="text-sm text-muted">
+							{$t('workflowHistory.nodesCount', { count: previewVersion.nodes?.length ?? 0 })}
+							·
+							{$t('workflowHistory.edgesCount', { count: previewVersion.edges?.length ?? 0 })}
+						</p>
+						<span class="pill">
+							{previewVersion.isActive
+								? $t('workflowHistory.activeBadge')
+								: $t('workflowHistory.draftBadge')}
+						</span>
+					</div>
+				{/if}
+			</div>
+		</aside>
+	</div>
+{/if}
+
 {#if templateEditModalOpen}
 	<div
 		class="modal-overlay"
@@ -1992,6 +2387,137 @@
 	</div>
 {/if}
 
+{#if storageEditModalOpen}
+	<div
+		class="modal-overlay"
+		role="presentation"
+		on:click={closeStorageEdit}
+		on:keydown={(e) => e.key === 'Escape' && closeStorageEdit()}
+	>
+		<div class="modal-content" role="dialog" on:click|stopPropagation on:keydown|stopPropagation>
+			<div class="modal-header">
+				<h2 class="modal-title">{$t('workflowBuilder.modalEditStorage')}</h2>
+				<button type="button" class="modal-close" on:click={closeStorageEdit} aria-label={$t('common.close')}>
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-5 w-5">
+						<line x1="18" y1="6" x2="6" y2="18" />
+						<line x1="6" y1="6" x2="18" y2="18" />
+					</svg>
+				</button>
+			</div>
+			<div class="modal-body storage-mode-form">
+				<p class="text-sm text-muted mb-4">{$t('workflowBuilder.storageModeHint')}</p>
+				<label class="storage-mode-option">
+					<input type="radio" name="storageMode" value="raw" bind:group={storageModeDraft} />
+					<span>{$t('workflowBuilder.storageModeRaw')}</span>
+				</label>
+				<label class="storage-mode-option">
+					<input type="radio" name="storageMode" value="rendered" bind:group={storageModeDraft} />
+					<span>{$t('workflowBuilder.storageModeRendered')}</span>
+				</label>
+			</div>
+			<div class="template-modal-footer">
+				<button type="button" class="btn-secondary" on:click={closeStorageEdit}>{$t('common.cancel')}</button>
+				<button type="button" class="btn-primary" on:click={saveStorageConfig}>{$t('common.save')}</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+{#if storageRecordsModalOpen}
+	<div
+		class="modal-overlay"
+		role="presentation"
+		on:click={closeStorageRecords}
+		on:keydown={(e) => e.key === 'Escape' && closeStorageRecords()}
+	>
+		<div class="modal-content storage-records-modal" role="dialog" on:click|stopPropagation on:keydown|stopPropagation>
+			<div class="modal-header">
+				<h2 class="modal-title">{$t('workflowBuilder.modalStorageRecords')}</h2>
+				<button type="button" class="modal-close" on:click={closeStorageRecords} aria-label={$t('common.close')}>
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-5 w-5">
+						<line x1="18" y1="6" x2="6" y2="18" />
+						<line x1="6" y1="6" x2="18" y2="18" />
+					</svg>
+				</button>
+			</div>
+			<div class="modal-body">
+				{#if loadingStorageRecords}
+					<p class="text-sm text-muted">{$t('common.loading')}</p>
+				{:else if storageRecords.length === 0}
+					<p class="text-sm text-muted">{$t('workflowBuilder.storageRecordsEmpty')}</p>
+				{:else}
+					<div class="storage-records-table-wrap">
+						<table class="storage-records-table">
+							<thead>
+								<tr>
+									<th>{$t('workflowBuilder.storageColDate')}</th>
+									<th>{$t('workflowBuilder.storageColMode')}</th>
+									<th>{$t('workflowBuilder.storageColSize')}</th>
+									<th>{$t('workflowBuilder.storageColPreview')}</th>
+									<th></th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each storageRecords as record}
+									<tr>
+										<td class="storage-cell-date">{new Date(record.createdAt).toLocaleString()}</td>
+										<td>{record.mode}</td>
+										<td>{formatStorageSize(record.size)}</td>
+										<td class="storage-cell-preview">{record.preview}</td>
+										<td class="storage-cell-actions">
+											<button type="button" class="btn-link" on:click={() => viewStorageRecord(record.id)}>
+												{$t('workflowBuilder.storageView')}
+											</button>
+											<button type="button" class="btn-link" on:click={() => downloadStorageRecord(record)}>
+												{$t('workflowBuilder.storageDownload')}
+											</button>
+											<button type="button" class="btn-link text-red-600" on:click={() => removeStorageRecord(record.id)}>
+												{$t('workflowBuilder.storageDelete')}
+											</button>
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+				{/if}
+			</div>
+			<div class="template-modal-footer">
+				<button type="button" class="btn-secondary" on:click={closeStorageRecords}>{$t('common.close')}</button>
+				<button type="button" class="btn-primary" on:click={refreshStorageRecords} title="Refresh">↻</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+{#if storageRecordDetailOpen}
+	<div
+		class="modal-overlay"
+		role="presentation"
+		on:click={closeStorageRecordDetail}
+		on:keydown={(e) => e.key === 'Escape' && closeStorageRecordDetail()}
+	>
+		<div class="modal-content" role="dialog" on:click|stopPropagation on:keydown|stopPropagation>
+			<div class="modal-header">
+				<h2 class="modal-title">{$t('workflowBuilder.storageRecordDetail')}</h2>
+				<button type="button" class="modal-close" on:click={closeStorageRecordDetail} aria-label={$t('common.close')}>
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-5 w-5">
+						<line x1="18" y1="6" x2="6" y2="18" />
+						<line x1="6" y1="6" x2="18" y2="18" />
+					</svg>
+				</button>
+			</div>
+			<div class="modal-body">
+				<p class="text-xs text-muted mb-2 font-mono">{storageRecordDetailTitle}</p>
+				<pre class="storage-record-detail">{storageRecordDetailContent}</pre>
+			</div>
+			<div class="template-modal-footer">
+				<button type="button" class="btn-secondary" on:click={closeStorageRecordDetail}>{$t('common.close')}</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
 <style>
 	.workspace {
 		position: relative;
@@ -2132,8 +2658,90 @@
 		background: rgba(59, 130, 246, 0.08);
 	}
 
+	.node.storage {
+		background: rgba(139, 92, 246, 0.1);
+	}
+
 	.node.channel {
 		background: rgba(16, 185, 129, 0.12);
+	}
+
+	.storage-node-actions {
+		position: absolute;
+		top: 0.5rem;
+		right: 2.5rem;
+		display: flex;
+		gap: 0.25rem;
+	}
+
+	.storage-mode-form {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.storage-mode-option {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		cursor: pointer;
+		font-size: 0.875rem;
+	}
+
+	.storage-records-modal {
+		max-width: 56rem;
+		width: 95vw;
+	}
+
+	.storage-records-table-wrap {
+		overflow-x: auto;
+		max-height: 50vh;
+	}
+
+	.storage-records-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.8125rem;
+	}
+
+	.storage-records-table th,
+	.storage-records-table td {
+		padding: 0.5rem 0.75rem;
+		border-bottom: 1px solid var(--border, #e2e8f0);
+		text-align: left;
+		vertical-align: top;
+	}
+
+	.storage-cell-preview {
+		max-width: 16rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.storage-cell-actions {
+		white-space: nowrap;
+	}
+
+	.storage-cell-actions .btn-link {
+		margin-right: 0.5rem;
+		font-size: 0.75rem;
+		color: #2563eb;
+		background: none;
+		border: none;
+		cursor: pointer;
+		padding: 0;
+	}
+
+	.storage-record-detail {
+		max-height: 50vh;
+		overflow: auto;
+		font-size: 0.75rem;
+		white-space: pre-wrap;
+		word-break: break-word;
+		background: #f8fafc;
+		padding: 1rem;
+		border-radius: 0.5rem;
 	}
 
 	.edges-layer {
@@ -2623,5 +3231,120 @@
 	.btn-primary:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+
+	.history-overlay {
+		position: fixed;
+		inset: 0;
+		z-index: 50;
+		background: rgba(15, 23, 42, 0.35);
+		display: flex;
+		justify-content: flex-end;
+	}
+
+	.history-panel {
+		width: min(24rem, 100vw);
+		height: 100%;
+		background: var(--color-surface, #fff);
+		border-left: 1px solid var(--color-border, #e2e8f0);
+		display: flex;
+		flex-direction: column;
+		box-shadow: -8px 0 24px rgba(15, 23, 42, 0.12);
+	}
+
+	.history-panel-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 1rem 1.25rem;
+		border-bottom: 1px solid var(--color-border, #e2e8f0);
+	}
+
+	.history-panel-title {
+		font-size: 1rem;
+		font-weight: 600;
+		color: var(--color-text, #0f172a);
+	}
+
+	.history-panel-body {
+		flex: 1;
+		overflow-y: auto;
+		padding: 1rem 1.25rem 1.5rem;
+	}
+
+	.history-version-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.history-version-item {
+		display: flex;
+		align-items: stretch;
+		gap: 0.5rem;
+		border: 1px solid var(--color-border, #e2e8f0);
+		border-radius: 0.75rem;
+		overflow: hidden;
+		background: var(--color-surface-muted, #f8fafc);
+	}
+
+	.history-version-item-selected {
+		border-color: var(--color-accent, #2563eb);
+		box-shadow: 0 0 0 1px var(--color-accent, #2563eb);
+	}
+
+	.history-version-main {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.125rem;
+		padding: 0.625rem 0.75rem;
+		border: none;
+		background: transparent;
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.history-version-number {
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: var(--color-text, #0f172a);
+	}
+
+	.history-version-meta {
+		font-size: 0.75rem;
+		color: var(--color-muted, #64748b);
+	}
+
+	.history-version-name {
+		font-size: 0.8125rem;
+		color: var(--color-text, #0f172a);
+	}
+
+	.history-restore-btn {
+		align-self: center;
+		margin-right: 0.5rem;
+		flex-shrink: 0;
+		padding: 0.375rem 0.75rem;
+		font-size: 0.75rem;
+	}
+
+	.history-preview {
+		margin-top: 1.25rem;
+		padding: 0.875rem;
+		border-radius: 0.75rem;
+		border: 1px solid var(--color-border, #e2e8f0);
+		background: var(--color-surface-muted, #f8fafc);
+	}
+
+	.history-preview-title {
+		font-size: 0.875rem;
+		font-weight: 600;
+		margin-bottom: 0.5rem;
+		color: var(--color-text, #0f172a);
 	}
 </style>

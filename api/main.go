@@ -19,8 +19,10 @@ import (
 	"notiair/internal/persistence/channel"
 	"notiair/internal/persistence/database"
 	"notiair/internal/persistence/outbox"
+	persiststorage "notiair/internal/persistence/storage"
 	"notiair/internal/persistence/serviceconfig"
 	workflowpersistence "notiair/internal/persistence/workflow"
+	"notiair/internal/storage"
 	"notiair/internal/queue"
 	"notiair/internal/routing"
 	"notiair/internal/stream"
@@ -57,7 +59,7 @@ func initDatabase() {
 
 	serviceConfigRepo = serviceconfig.NewRepository(dbConn)
 
-	if err := dbConn.AutoMigrate(&outbox.Message{}, &serviceconfig.ServiceConfig{}, &channel.Channel{}, &workflowpersistence.WorkflowEntity{}); err != nil {
+	if err := dbConn.AutoMigrate(&outbox.Message{}, &serviceconfig.ServiceConfig{}, &channel.Channel{}, &workflowpersistence.WorkflowEntity{}, &workflowpersistence.WorkflowVersionEntity{}, &persiststorage.Record{}); err != nil {
 		log.Fatalf("migrate db: %v", err)
 	}
 
@@ -86,7 +88,9 @@ func buildApplication() *fiber.App {
 	templateRepo := templates.NewMemoryRepository()
 	workflowPersistenceRepo := workflowpersistence.NewRepository(dbConn)
 	workflowRepo := workflow.NewDBRepository(workflowPersistenceRepo)
-	routerSvc := routing.NewService(workflowRepo)
+	storageRepo := persiststorage.NewRepository(dbConn)
+	storageSvc := storage.NewService(storageRepo)
+	routerSvc := routing.NewService(workflowRepo, storageSvc)
 	outboxRepo := outbox.NewRepository(dbConn)
 
 	notificationService := services.NewNotificationService(routerSvc, queueClient, outboxRepo)
@@ -113,7 +117,7 @@ func buildApplication() *fiber.App {
 		go streamHub.Run()
 	}
 	
-	apiHandlers := handlers.NewAPI(notificationService, templateRepo, workflowRepo, queueInspector, serviceConfigRepo, channelRepo, streamConfig, streamHub, redisStore)
+	apiHandlers := handlers.NewAPI(notificationService, templateRepo, workflowRepo, queueInspector, serviceConfigRepo, channelRepo, streamConfig, streamHub, redisStore, storageSvc)
 
 	app := fiber.New(fiber.Config{
 		AppName:      "NotiAir Notification API",
@@ -139,7 +143,9 @@ func buildApplication() *fiber.App {
 func initStreamConsumer() error {
 	workflowPersistenceRepo := workflowpersistence.NewRepository(dbConn)
 	workflowRepo := workflow.NewDBRepository(workflowPersistenceRepo)
-	routerSvc := routing.NewService(workflowRepo)
+	storageRepo := persiststorage.NewRepository(dbConn)
+	storageSvc := storage.NewService(storageRepo)
+	routerSvc := routing.NewService(workflowRepo, storageSvc)
 	outboxRepo := outbox.NewRepository(dbConn)
 	notificationService := services.NewNotificationService(routerSvc, queueClient, outboxRepo)
 

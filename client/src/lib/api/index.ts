@@ -1,5 +1,9 @@
 import type { QueueItem } from "$lib/types/queue";
-import type { WorkflowDraft } from "$lib/types/workflow";
+import type {
+	WorkflowDraft,
+	WorkflowVersion,
+	WorkflowVersionMeta,
+} from "$lib/types/workflow";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080/api/v1";
 
@@ -33,6 +37,92 @@ export async function deleteWorkflow(id: string): Promise<void> {
 		method: "DELETE",
 	});
 	if (!res.ok) throw new Error("errors.deleteWorkflow");
+}
+
+export async function listWorkflowVersions(
+	workflowId: string,
+): Promise<WorkflowVersionMeta[]> {
+	const res = await fetch(`${API_URL}/workflows/${workflowId}/versions`);
+	if (!res.ok) throw new Error("errors.loadWorkflowVersions");
+	const data = await res.json();
+	return Array.isArray(data) ? data : [];
+}
+
+export async function getWorkflowVersion(
+	workflowId: string,
+	versionId: string,
+): Promise<WorkflowVersion> {
+	const res = await fetch(
+		`${API_URL}/workflows/${workflowId}/versions/${versionId}`,
+	);
+	if (!res.ok) throw new Error("errors.loadWorkflowVersion");
+	return res.json();
+}
+
+export async function restoreWorkflowVersion(
+	workflowId: string,
+	versionId: string,
+): Promise<WorkflowDraft> {
+	const res = await fetch(
+		`${API_URL}/workflows/${workflowId}/versions/${versionId}/restore`,
+		{ method: "POST" },
+	);
+	if (!res.ok) throw new Error("errors.restoreWorkflowVersion");
+	return res.json();
+}
+
+export type StorageRecordListItem = {
+	id: string;
+	workflowId: string;
+	nodeId: string;
+	mode: "raw" | "rendered";
+	contentType: string;
+	size: number;
+	preview: string;
+	metadata?: Record<string, unknown>;
+	createdAt: string;
+};
+
+export type StorageRecordDetail = StorageRecordListItem & {
+	data: string;
+};
+
+export async function listStorageRecords(
+	workflowId: string,
+	nodeId: string,
+	opts?: { limit?: number; offset?: number },
+): Promise<StorageRecordListItem[]> {
+	const params = new URLSearchParams({ nodeId });
+	if (opts?.limit != null) params.set("limit", String(opts.limit));
+	if (opts?.offset != null) params.set("offset", String(opts.offset));
+	const res = await fetch(
+		`${API_URL}/workflows/${workflowId}/storage?${params}`,
+	);
+	if (!res.ok) throw new Error("errors.loadStorageRecords");
+	const data = await res.json();
+	return Array.isArray(data) ? data : [];
+}
+
+export async function getStorageRecord(
+	workflowId: string,
+	recordId: string,
+): Promise<StorageRecordDetail> {
+	const res = await fetch(
+		`${API_URL}/workflows/${workflowId}/storage/${recordId}`,
+	);
+	if (!res.ok) throw new Error("errors.loadStorageRecord");
+	return res.json();
+}
+
+export async function deleteStorageRecord(
+	workflowId: string,
+	recordId: string,
+): Promise<void> {
+	const res = await fetch(
+		`${API_URL}/workflows/${workflowId}/storage/${recordId}`,
+		{ method: "DELETE" },
+	);
+	if (!res.ok) throw new Error("errors.deleteStorageRecord");
 }
 
 export async function dispatchNotification(input: {

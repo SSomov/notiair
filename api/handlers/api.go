@@ -30,6 +30,9 @@ type WorkflowRepository interface {
 	FindByID(ctx context.Context, id string) (workflow.Workflow, error)
 	List(ctx context.Context) ([]workflow.Workflow, error)
 	Delete(ctx context.Context, id string) error
+	ListVersions(ctx context.Context, workflowID string) ([]workflow.VersionMeta, error)
+	GetVersion(ctx context.Context, workflowID, versionID string) (workflow.Version, error)
+	RestoreVersion(ctx context.Context, workflowID, versionID string) (workflow.Workflow, error)
 }
 
 type QueueInspector interface {
@@ -74,6 +77,7 @@ type API struct {
 	streamConfig  StreamConfig
 	streamHub     *stream.Hub
 	redisStore    *stream.RedisStore
+	storage       StorageReader
 }
 
 type StreamConfig struct {
@@ -81,7 +85,7 @@ type StreamConfig struct {
 	Topic   string
 }
 
-func NewAPI(notificationSvc NotificationService, tplRepo TemplateRepository, wfRepo WorkflowRepository, queueInspector QueueInspector, serviceConfigRepo ServiceConfigRepository, channelRepo ChannelRepository, streamConfig StreamConfig, streamHub *stream.Hub, redisStore *stream.RedisStore) *API {
+func NewAPI(notificationSvc NotificationService, tplRepo TemplateRepository, wfRepo WorkflowRepository, queueInspector QueueInspector, serviceConfigRepo ServiceConfigRepository, channelRepo ChannelRepository, streamConfig StreamConfig, streamHub *stream.Hub, redisStore *stream.RedisStore, storageReader StorageReader) *API {
 	return &API{
 		notifications: notificationSvc,
 		templates:     tplRepo,
@@ -93,6 +97,7 @@ func NewAPI(notificationSvc NotificationService, tplRepo TemplateRepository, wfR
 		streamConfig:  streamConfig,
 		streamHub:     streamHub,
 		redisStore:    redisStore,
+		storage:       storageReader,
 	}
 }
 
@@ -238,6 +243,57 @@ func (a *API) DeleteWorkflow(c *fiber.Ctx) error {
 	}
 
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (a *API) ListWorkflowVersions(c *fiber.Ctx) error {
+	workflowID := c.Params("id")
+	if workflowID == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "id is required")
+	}
+
+	if _, err := a.workflows.FindByID(c.Context(), workflowID); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "workflow not found")
+	}
+
+	versions, err := a.workflows.ListVersions(c.Context(), workflowID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	if versions == nil {
+		versions = []workflow.VersionMeta{}
+	}
+
+	return c.JSON(versions)
+}
+
+func (a *API) GetWorkflowVersion(c *fiber.Ctx) error {
+	workflowID := c.Params("id")
+	versionID := c.Params("versionId")
+	if workflowID == "" || versionID == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "id and versionId are required")
+	}
+
+	ver, err := a.workflows.GetVersion(c.Context(), workflowID, versionID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "version not found")
+	}
+
+	return c.JSON(ver)
+}
+
+func (a *API) RestoreWorkflowVersion(c *fiber.Ctx) error {
+	workflowID := c.Params("id")
+	versionID := c.Params("versionId")
+	if workflowID == "" || versionID == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "id and versionId are required")
+	}
+
+	restored, err := a.workflows.RestoreVersion(c.Context(), workflowID, versionID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "version not found")
+	}
+
+	return c.JSON(restored)
 }
 
 func (a *API) ListQueue(c *fiber.Ctx) error {
