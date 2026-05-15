@@ -17,12 +17,9 @@
 		listSmtpAccounts,
 		listChannels,
 		dispatchNotification,
-		listStorageRecords,
-		getStorageRecord,
-		deleteStorageRecord,
 		type Channel,
-		type StorageRecordListItem,
 	} from '$lib/api';
+	import StorageRecordsPanel from '$lib/components/StorageRecordsPanel.svelte';
 	import type {
 		WorkflowDraft,
 		WorkflowVersion,
@@ -41,7 +38,7 @@
 		{ name: 'Manual' },
 	];
 	let triggerMenuOpen = false;
-	let selectedTrigger = '';
+	let nodeMenuOpenId: string | null = null;
 
 	let workflowId: string | null = null;
 	let workflowName = '';
@@ -157,11 +154,6 @@
 
 	let storageRecordsModalOpen = false;
 	let viewingStorageNodeId: string | null = null;
-	let storageRecords: StorageRecordListItem[] = [];
-	let loadingStorageRecords = false;
-	let storageRecordDetailOpen = false;
-	let storageRecordDetailContent = '';
-	let storageRecordDetailTitle = '';
 
 	// Состояние для редактирования payload триггера
 	let triggerPayloadModalOpen = false;
@@ -263,7 +255,6 @@
 	function selectTrigger(option: TriggerOption) {
 		if (option.disabled) return; // Не создаем неактивные триггеры
 
-		selectedTrigger = option.name;
 		triggerMenuOpen = false;
 
 		// Создаем новую ноду триггера с выбранным типом
@@ -360,6 +351,8 @@
 	function cancelConnection() {
 		connecting = null;
 		mousePosition = null;
+		triggerMenuOpen = false;
+		closeNodeMenu();
 	}
 
 	function handleGlobalKeydown(e: KeyboardEvent) {
@@ -711,88 +704,36 @@
 		closeStorageEdit();
 	}
 
-	async function openStorageRecords(nodeId: string) {
+	function openStorageRecords(nodeId: string) {
 		if (!workflowId) {
 			error = 'errors.saveWorkflowFirst';
 			return;
 		}
 		viewingStorageNodeId = nodeId;
 		storageRecordsModalOpen = true;
-		await refreshStorageRecords();
 	}
 
 	function closeStorageRecords() {
 		storageRecordsModalOpen = false;
 		viewingStorageNodeId = null;
-		storageRecords = [];
 	}
 
-	async function refreshStorageRecords() {
-		if (!workflowId || !viewingStorageNodeId) return;
-		loadingStorageRecords = true;
-		try {
-			storageRecords = await listStorageRecords(workflowId, viewingStorageNodeId, {
-				limit: 20,
-			});
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'errors.loadStorageRecords';
-			storageRecords = [];
-		} finally {
-			loadingStorageRecords = false;
-		}
+	function handleStorageRecordsLabelChange(newLabel: string) {
+		if (!viewingStorageNodeId) return;
+		nodes = nodes.map((node) =>
+			node.id === viewingStorageNodeId ? { ...node, label: newLabel } : node,
+		);
 	}
 
-	async function viewStorageRecord(recordId: string) {
-		if (!workflowId) return;
-		try {
-			const rec = await getStorageRecord(workflowId, recordId);
-			storageRecordDetailTitle = rec.id;
-			storageRecordDetailContent = rec.data;
-			storageRecordDetailOpen = true;
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'errors.loadStorageRecord';
-		}
+	function handleStorageRecordsError(message: string) {
+		error = message;
 	}
 
-	async function downloadStorageRecord(record: StorageRecordListItem) {
-		if (!workflowId) return;
-		try {
-			const rec = await getStorageRecord(workflowId, record.id);
-			const blob = new Blob([rec.data], {
-				type: rec.contentType || 'application/octet-stream',
-			});
-			const url = URL.createObjectURL(blob);
-			const a = document.createElement('a');
-			a.href = url;
-			a.download = `storage-${record.id}.txt`;
-			a.click();
-			URL.revokeObjectURL(url);
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'errors.loadStorageRecord';
-		}
-	}
-
-	async function removeStorageRecord(recordId: string) {
-		if (!workflowId) return;
-		try {
-			await deleteStorageRecord(workflowId, recordId);
-			await refreshStorageRecords();
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'errors.deleteStorageRecord';
-		}
-	}
-
-	function closeStorageRecordDetail() {
-		storageRecordDetailOpen = false;
-		storageRecordDetailContent = '';
-		storageRecordDetailTitle = '';
-	}
-
-	function formatStorageSize(bytes: number): string {
-		if (bytes < 1024) return `${bytes} B`;
-		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-	}
+	$: viewingStorageNodeLabel =
+		viewingStorageNodeId != null
+			? (nodes.find((n) => n.id === viewingStorageNodeId)?.label ??
+				get(t)('workflowBuilder.newStorage'))
+			: '';
 
 	function openTriggerPayloadEdit(nodeId: string) {
 		editingTriggerNodeId = nodeId;
@@ -1033,8 +974,41 @@
 		}
 	}
 
-	function deleteNode(nodeId: string, event: MouseEvent) {
+	function toggleNodeMenu(nodeId: string, event: MouseEvent) {
 		event.stopPropagation();
+		nodeMenuOpenId = nodeMenuOpenId === nodeId ? null : nodeId;
+	}
+
+	function closeNodeMenu() {
+		nodeMenuOpenId = null;
+	}
+
+	function duplicateNode(nodeId: string) {
+		const source = nodes.find((n) => n.id === nodeId);
+		if (!source) return;
+
+		const duplicate: CanvasNode = {
+			...source,
+			id: generateNodeId(source.variant),
+			position: {
+				x: source.position.x + 48,
+				y: source.position.y + 48,
+			},
+			...(source.templatePayload
+				? { templatePayload: structuredClone(source.templatePayload) }
+				: {}),
+			...(source.triggerPayload
+				? { triggerPayload: structuredClone(source.triggerPayload) }
+				: {}),
+			...(source.eventTypes ? { eventTypes: [...source.eventTypes] } : {}),
+		};
+
+		nodes = [...nodes, duplicate];
+		closeNodeMenu();
+	}
+
+	function deleteNode(nodeId: string, event?: MouseEvent) {
+		event?.stopPropagation();
 
 		// Удалить узел
 		nodes = nodes.filter((n) => n.id !== nodeId);
@@ -1045,6 +1019,10 @@
 		// Если удаляемый узел был в процессе соединения, отменить соединение
 		if (connecting?.nodeId === nodeId) {
 			connecting = null;
+		}
+
+		if (nodeMenuOpenId === nodeId) {
+			closeNodeMenu();
 		}
 	}
 
@@ -1282,7 +1260,6 @@
 	}
 
 	onMount(async () => {
-		selectedTrigger = get(t)('workflowBuilder.addTrigger');
 		const id = $page.url.searchParams.get('id');
 		if (!id) {
 			workflowName = get(t)('workflows.newWorkflow');
@@ -1475,26 +1452,32 @@
 
 	<div class="workspace" class:workspace-expanded={workspaceExpanded}>
 		<div class="workspace-toolbar">
-			<div class="flex flex-wrap items-center gap-3">
+			<div class="flex flex-wrap items-center gap-2">
 				<div class="relative">
 					<button
 						type="button"
-						class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm"
-						on:click={() => (triggerMenuOpen = !triggerMenuOpen)}
+						class="toolbar-icon-btn"
+						on:click|stopPropagation={() => {
+							triggerMenuOpen = !triggerMenuOpen;
+							closeNodeMenu();
+						}}
 						aria-haspopup="true"
 						aria-expanded={triggerMenuOpen}
+						title={$t('workflowBuilder.addTrigger')}
+						aria-label={$t('workflowBuilder.addTriggerAria')}
 					>
-						{selectedTrigger}
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+						</svg>
 					</button>
 					{#if triggerMenuOpen}
-						<ul
-							class="absolute z-10 mt-2 w-48 overflow-hidden rounded-xl border border-border bg-surface shadow-lg"
-						>
+						<ul class="toolbar-dropdown" role="menu">
 							{#each triggerOptions as option}
-								<li>
+								<li role="none">
 									<button
 										type="button"
-										class="block w-full px-4 py-2 text-left text-sm text-text hover:bg-surfaceMuted disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+										role="menuitem"
+										class="toolbar-dropdown-item"
 										on:click={() => selectTrigger(option)}
 										disabled={option.disabled}
 									>
@@ -1505,6 +1488,41 @@
 						</ul>
 					{/if}
 				</div>
+				<button
+					type="button"
+					class="toolbar-icon-btn"
+					on:click={addTemplateNode}
+					title={$t('workflowBuilder.addTemplate')}
+					aria-label={$t('workflowBuilder.addTemplateAria')}
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z" />
+					</svg>
+				</button>
+				<button
+					type="button"
+					class="toolbar-icon-btn"
+					on:click={addStorageNode}
+					title={$t('workflowBuilder.addStorage')}
+					aria-label={$t('workflowBuilder.addStorageAria')}
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
+						<ellipse cx="12" cy="5" rx="9" ry="3" />
+						<path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5" />
+						<path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3" />
+					</svg>
+				</button>
+				<button
+					type="button"
+					class="toolbar-icon-btn"
+					on:click={addChannelNode}
+					title={$t('workflowBuilder.addChannel')}
+					aria-label={$t('workflowBuilder.addChannelAria')}
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 0 1-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+					</svg>
+				</button>
 				<button
 					type="button"
 					class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm"
@@ -1554,27 +1572,6 @@
 			</div>
 
 			<div class="flex items-center gap-3">
-				<button
-					type="button"
-					class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm"
-					on:click={addTemplateNode}
-				>
-					{$t('workflowBuilder.addTemplate')}
-				</button>
-				<button
-					type="button"
-					class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm"
-					on:click={addStorageNode}
-				>
-					{$t('workflowBuilder.addStorage')}
-				</button>
-				<button
-					type="button"
-					class="btn-primary bg-surfaceMuted text-text shadow-none hover:shadow-sm"
-					on:click={addChannelNode}
-				>
-					{$t('workflowBuilder.addChannel')}
-				</button>
 				{#if workflowId}
 					<button
 						type="button"
@@ -1691,27 +1688,55 @@
 					}}
 					on:neodrag={(event) => handleDrag(event, node.id)}
 				>
-					<button
-						type="button"
-						class="delete-btn"
-						aria-label={$t('workflowBuilder.deleteBlockAria')}
-						on:click={(e) => deleteNode(node.id, e)}
-					>
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="1.5"
-							class="h-4 w-4"
+					<div class="node-menu-wrap">
+						<button
+							type="button"
+							class="node-menu-btn"
+							aria-label={$t('workflowBuilder.nodeMenuAria')}
+							aria-haspopup="true"
+							aria-expanded={nodeMenuOpenId === node.id}
+							on:click={(e) => toggleNodeMenu(node.id, e)}
 						>
-							<path
-								d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
-							/>
-							<line x1="10" y1="11" x2="10" y2="17" />
-							<line x1="14" y1="11" x2="14" y2="17" />
-						</svg>
-					</button>
+							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-4 w-4" aria-hidden="true">
+								<circle cx="12" cy="5" r="1.5" />
+								<circle cx="12" cy="12" r="1.5" />
+								<circle cx="12" cy="19" r="1.5" />
+							</svg>
+						</button>
+						{#if nodeMenuOpenId === node.id}
+							<ul class="node-menu-dropdown" role="menu">
+								<li role="none">
+									<button
+										type="button"
+										role="menuitem"
+										class="node-menu-item"
+										on:click|stopPropagation={() => duplicateNode(node.id)}
+									>
+										<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
+											<rect x="9" y="9" width="13" height="13" rx="2" />
+											<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+										</svg>
+										{$t('workflowBuilder.duplicateBlock')}
+									</button>
+								</li>
+								<li role="none">
+									<button
+										type="button"
+										role="menuitem"
+										class="node-menu-item node-menu-item-danger"
+										on:click|stopPropagation={(e) => deleteNode(node.id, e)}
+									>
+										<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" aria-hidden="true">
+											<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+											<line x1="10" y1="11" x2="10" y2="17" />
+											<line x1="14" y1="11" x2="14" y2="17" />
+										</svg>
+										{$t('common.delete')}
+									</button>
+								</li>
+							</ul>
+						{/if}
+					</div>
 					<div class="connectors">
 						{#if node.variant !== 'channel'}
 							<button
@@ -1951,6 +1976,17 @@
 			{/each}
 			</div>
 		</div>
+
+		{#if storageRecordsModalOpen && workflowId && viewingStorageNodeId}
+			<StorageRecordsPanel
+				workflowId={workflowId}
+				nodeId={viewingStorageNodeId}
+				nodeLabel={viewingStorageNodeLabel}
+				on:close={closeStorageRecords}
+				on:labelChange={(e) => handleStorageRecordsLabelChange(e.detail)}
+				on:error={(e) => handleStorageRecordsError(e.detail)}
+			/>
+		{/if}
 	</div>
 </section>
 
@@ -2449,100 +2485,6 @@
 	</div>
 {/if}
 
-{#if storageRecordsModalOpen}
-	<div
-		class="modal-overlay"
-		role="presentation"
-		on:click={closeStorageRecords}
-		on:keydown={(e) => e.key === 'Escape' && closeStorageRecords()}
-	>
-		<div class="modal-content storage-records-modal" role="dialog" on:click|stopPropagation on:keydown|stopPropagation>
-			<div class="modal-header">
-				<h2 class="modal-title">{$t('workflowBuilder.modalStorageRecords')}</h2>
-				<button type="button" class="modal-close" on:click={closeStorageRecords} aria-label={$t('common.close')}>
-					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-5 w-5">
-						<line x1="18" y1="6" x2="6" y2="18" />
-						<line x1="6" y1="6" x2="18" y2="18" />
-					</svg>
-				</button>
-			</div>
-			<div class="modal-body">
-				{#if loadingStorageRecords}
-					<p class="text-sm text-muted">{$t('common.loading')}</p>
-				{:else if storageRecords.length === 0}
-					<p class="text-sm text-muted">{$t('workflowBuilder.storageRecordsEmpty')}</p>
-				{:else}
-					<div class="storage-records-table-wrap">
-						<table class="storage-records-table">
-							<thead>
-								<tr>
-									<th>{$t('workflowBuilder.storageColDate')}</th>
-									<th>{$t('workflowBuilder.storageColMode')}</th>
-									<th>{$t('workflowBuilder.storageColSize')}</th>
-									<th>{$t('workflowBuilder.storageColPreview')}</th>
-									<th></th>
-								</tr>
-							</thead>
-							<tbody>
-								{#each storageRecords as record}
-									<tr>
-										<td class="storage-cell-date">{new Date(record.createdAt).toLocaleString()}</td>
-										<td>{record.mode}</td>
-										<td>{formatStorageSize(record.size)}</td>
-										<td class="storage-cell-preview">{record.preview}</td>
-										<td class="storage-cell-actions">
-											<button type="button" class="btn-link" on:click={() => viewStorageRecord(record.id)}>
-												{$t('workflowBuilder.storageView')}
-											</button>
-											<button type="button" class="btn-link" on:click={() => downloadStorageRecord(record)}>
-												{$t('workflowBuilder.storageDownload')}
-											</button>
-											<button type="button" class="btn-link text-red-600" on:click={() => removeStorageRecord(record.id)}>
-												{$t('workflowBuilder.storageDelete')}
-											</button>
-										</td>
-									</tr>
-								{/each}
-							</tbody>
-						</table>
-					</div>
-				{/if}
-			</div>
-			<div class="template-modal-footer">
-				<button type="button" class="btn-secondary" on:click={closeStorageRecords}>{$t('common.close')}</button>
-				<button type="button" class="btn-primary" on:click={refreshStorageRecords} title="Refresh">↻</button>
-			</div>
-		</div>
-	</div>
-{/if}
-
-{#if storageRecordDetailOpen}
-	<div
-		class="modal-overlay"
-		role="presentation"
-		on:click={closeStorageRecordDetail}
-		on:keydown={(e) => e.key === 'Escape' && closeStorageRecordDetail()}
-	>
-		<div class="modal-content" role="dialog" on:click|stopPropagation on:keydown|stopPropagation>
-			<div class="modal-header">
-				<h2 class="modal-title">{$t('workflowBuilder.storageRecordDetail')}</h2>
-				<button type="button" class="modal-close" on:click={closeStorageRecordDetail} aria-label={$t('common.close')}>
-					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-5 w-5">
-						<line x1="18" y1="6" x2="6" y2="18" />
-						<line x1="6" y1="6" x2="18" y2="18" />
-					</svg>
-				</button>
-			</div>
-			<div class="modal-body">
-				<p class="text-xs text-muted mb-2 font-mono">{storageRecordDetailTitle}</p>
-				<pre class="storage-record-detail">{storageRecordDetailContent}</pre>
-			</div>
-			<div class="template-modal-footer">
-				<button type="button" class="btn-secondary" on:click={closeStorageRecordDetail}>{$t('common.close')}</button>
-			</div>
-		</div>
-	</div>
-{/if}
 
 <style>
 	.workspace {
@@ -2622,10 +2564,71 @@
 		cursor: grabbing;
 	}
 
-	.delete-btn {
+	.toolbar-icon-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 36px;
+		height: 36px;
+		border-radius: 0.75rem;
+		border: 1px solid rgba(148, 163, 184, 0.3);
+		background: rgba(248, 250, 252, 0.9);
+		color: #64748b;
+		transition: 120ms ease;
+		cursor: pointer;
+	}
+
+	.toolbar-icon-btn:hover {
+		color: #2563eb;
+		border-color: rgba(37, 99, 235, 0.5);
+		background: rgba(37, 99, 235, 0.08);
+	}
+
+	.toolbar-dropdown {
+		position: absolute;
+		z-index: 20;
+		top: calc(100% + 0.5rem);
+		left: 0;
+		min-width: 12rem;
+		margin: 0;
+		padding: 0.25rem 0;
+		list-style: none;
+		overflow: hidden;
+		border-radius: 0.75rem;
+		border: 1px solid rgba(226, 232, 240, 0.9);
+		background: #fff;
+		box-shadow: 0 10px 25px -10px rgba(15, 23, 42, 0.2);
+	}
+
+	.toolbar-dropdown-item {
+		display: block;
+		width: 100%;
+		padding: 0.5rem 1rem;
+		border: none;
+		background: transparent;
+		text-align: left;
+		font-size: 0.875rem;
+		color: #1e293b;
+		cursor: pointer;
+	}
+
+	.toolbar-dropdown-item:hover:not(:disabled) {
+		background: rgba(248, 250, 252, 0.9);
+	}
+
+	.toolbar-dropdown-item:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.node-menu-wrap {
 		position: absolute;
 		top: 0.75rem;
 		right: 0.75rem;
+		z-index: 15;
+	}
+
+	.node-menu-btn {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -2637,13 +2640,55 @@
 		color: #64748b;
 		box-shadow: 0 6px 16px -12px rgba(15, 23, 42, 0.4);
 		transition: 120ms ease;
+		cursor: pointer;
 	}
 
-	.delete-btn:hover {
+	.node-menu-btn:hover {
+		color: #2563eb;
+		border-color: rgba(37, 99, 235, 0.5);
+		background: rgba(37, 99, 235, 0.1);
+	}
+
+	.node-menu-dropdown {
+		position: absolute;
+		top: calc(100% + 0.375rem);
+		right: 0;
+		z-index: 25;
+		min-width: 10.5rem;
+		margin: 0;
+		padding: 0.25rem 0;
+		list-style: none;
+		border-radius: 0.75rem;
+		border: 1px solid rgba(226, 232, 240, 0.9);
+		background: #fff;
+		box-shadow: 0 10px 25px -10px rgba(15, 23, 42, 0.2);
+	}
+
+	.node-menu-item {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		width: 100%;
+		padding: 0.5rem 0.875rem;
+		border: none;
+		background: transparent;
+		font-size: 0.8125rem;
+		color: #1e293b;
+		text-align: left;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+
+	.node-menu-item:hover {
+		background: rgba(248, 250, 252, 0.9);
+	}
+
+	.node-menu-item-danger {
 		color: #dc2626;
-		border-color: rgba(220, 38, 38, 0.5);
-		background: rgba(220, 38, 38, 0.1);
-		transform: translateY(-1px);
+	}
+
+	.node-menu-item-danger:hover {
+		background: rgba(220, 38, 38, 0.08);
 	}
 
 	.node-label {
@@ -2714,61 +2759,6 @@
 		font-size: 0.875rem;
 	}
 
-	.storage-records-modal {
-		max-width: 56rem;
-		width: 95vw;
-	}
-
-	.storage-records-table-wrap {
-		overflow-x: auto;
-		max-height: 50vh;
-	}
-
-	.storage-records-table {
-		width: 100%;
-		border-collapse: collapse;
-		font-size: 0.8125rem;
-	}
-
-	.storage-records-table th,
-	.storage-records-table td {
-		padding: 0.5rem 0.75rem;
-		border-bottom: 1px solid var(--border, #e2e8f0);
-		text-align: left;
-		vertical-align: top;
-	}
-
-	.storage-cell-preview {
-		max-width: 16rem;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.storage-cell-actions {
-		white-space: nowrap;
-	}
-
-	.storage-cell-actions .btn-link {
-		margin-right: 0.5rem;
-		font-size: 0.75rem;
-		color: #2563eb;
-		background: none;
-		border: none;
-		cursor: pointer;
-		padding: 0;
-	}
-
-	.storage-record-detail {
-		max-height: 50vh;
-		overflow: auto;
-		font-size: 0.75rem;
-		white-space: pre-wrap;
-		word-break: break-word;
-		background: #f8fafc;
-		padding: 1rem;
-		border-radius: 0.5rem;
-	}
 
 	.edges-layer {
 		position: absolute;

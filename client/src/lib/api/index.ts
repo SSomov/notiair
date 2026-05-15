@@ -87,20 +87,35 @@ export type StorageRecordDetail = StorageRecordListItem & {
 	data: string;
 };
 
+export type StorageRecordListResult = {
+	items: StorageRecordListItem[];
+	total: number;
+};
+
 export async function listStorageRecords(
 	workflowId: string,
 	nodeId: string,
-	opts?: { limit?: number; offset?: number },
-): Promise<StorageRecordListItem[]> {
+	opts?: { limit?: number; offset?: number; q?: string },
+): Promise<StorageRecordListResult> {
 	const params = new URLSearchParams({ nodeId });
 	if (opts?.limit != null) params.set("limit", String(opts.limit));
 	if (opts?.offset != null) params.set("offset", String(opts.offset));
+	if (opts?.q?.trim()) params.set("q", opts.q.trim());
 	const res = await fetch(
 		`${API_URL}/workflows/${workflowId}/storage?${params}`,
 	);
 	if (!res.ok) throw new Error("errors.loadStorageRecords");
 	const data = await res.json();
-	return Array.isArray(data) ? data : [];
+	if (data && Array.isArray(data.items)) {
+		return {
+			items: data.items,
+			total: typeof data.total === "number" ? data.total : data.items.length,
+		};
+	}
+	if (Array.isArray(data)) {
+		return { items: data, total: data.length };
+	}
+	return { items: [], total: 0 };
 }
 
 export async function getStorageRecord(

@@ -11,8 +11,14 @@ import (
 
 type StorageReader interface {
 	ListByNode(ctx context.Context, filter persiststorage.ListFilter) ([]persiststorage.Record, error)
+	CountByNode(ctx context.Context, filter persiststorage.ListFilter) (int, error)
 	GetByID(ctx context.Context, workflowID, recordID string) (persiststorage.Record, error)
 	Delete(ctx context.Context, workflowID, recordID string) error
+}
+
+type storageListResponse struct {
+	Items []storageRecordResponse `json:"items"`
+	Total int                     `json:"total"`
 }
 
 type storageRecordResponse struct {
@@ -79,12 +85,20 @@ func (a *API) ListStorageRecords(c *fiber.Ctx) error {
 		}
 	}
 
-	records, err := a.storage.ListByNode(c.Context(), persiststorage.ListFilter{
+	listFilter := persiststorage.ListFilter{
 		WorkflowID: workflowID,
 		NodeID:     nodeID,
 		Limit:      limit,
 		Offset:     offset,
-	})
+		Search:     c.Query("q"),
+	}
+
+	total, err := a.storage.CountByNode(c.Context(), listFilter)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+
+	records, err := a.storage.ListByNode(c.Context(), listFilter)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
@@ -94,7 +108,7 @@ func (a *API) ListStorageRecords(c *fiber.Ctx) error {
 		items[i] = recordToListItem(rec)
 	}
 
-	return c.JSON(items)
+	return c.JSON(storageListResponse{Items: items, Total: total})
 }
 
 func (a *API) GetStorageRecord(c *fiber.Ctx) error {

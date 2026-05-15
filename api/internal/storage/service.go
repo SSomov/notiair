@@ -17,6 +17,7 @@ const previewMaxLen = 200
 type Repository interface {
 	Create(ctx context.Context, input persiststorage.CreateInput) (persiststorage.Record, error)
 	ListByNode(ctx context.Context, filter persiststorage.ListFilter) ([]persiststorage.Record, error)
+	CountByNode(ctx context.Context, filter persiststorage.ListFilter) (int, error)
 	FindByID(ctx context.Context, workflowID, recordID string) (persiststorage.Record, error)
 	Delete(ctx context.Context, workflowID, recordID string) error
 }
@@ -118,6 +119,10 @@ func buildPreview(data []byte, contentType string) string {
 
 func (s *Service) ListByNode(ctx context.Context, filter persiststorage.ListFilter) ([]persiststorage.Record, error) {
 	return s.repo.ListByNode(ctx, filter)
+}
+
+func (s *Service) CountByNode(ctx context.Context, filter persiststorage.ListFilter) (int, error) {
+	return s.repo.CountByNode(ctx, filter)
 }
 
 func (s *Service) GetByID(ctx context.Context, workflowID, recordID string) (persiststorage.Record, error) {
