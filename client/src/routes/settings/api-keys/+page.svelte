@@ -1,29 +1,31 @@
 <script lang="ts">
-	import { t } from "$lib/i18n";
+import { t } from "$lib/i18n";
 
-	let generatedKey: string | null = null;
-	let copied = false;
+let generatedKey: string | null = null;
+let copied = false;
 
-	function generateKey() {
-		const bytes = new Uint8Array(16);
-		crypto.getRandomValues(bytes);
-		const hex = Array.from(bytes)
-			.map((b) => b.toString(16).padStart(2, "0"))
-			.join("");
-		generatedKey = `nak_${hex}`;
-		copied = false;
+function generateKey() {
+	const bytes = new Uint8Array(16);
+	crypto.getRandomValues(bytes);
+	const hex = Array.from(bytes)
+		.map((b) => b.toString(16).padStart(2, "0"))
+		.join("");
+	generatedKey = `nak_${hex}`;
+	copied = false;
+}
+
+async function copyKey() {
+	if (!generatedKey) return;
+	try {
+		await navigator.clipboard.writeText(generatedKey);
+		copied = true;
+		setTimeout(() => {
+			copied = false;
+		}, 2000);
+	} catch {
+		/* ignore */
 	}
-
-	async function copyKey() {
-		if (!generatedKey) return;
-		try {
-			await navigator.clipboard.writeText(generatedKey);
-			copied = true;
-			setTimeout(() => (copied = false), 2000);
-		} catch {
-			/* ignore */
-		}
-	}
+}
 </script>
 
 <section class="space-y-8 px-4 pb-12 pt-2 md:px-12 md:pt-4">

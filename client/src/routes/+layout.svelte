@@ -1,40 +1,48 @@
 <script lang="ts">
-	import '../app.css';
-	import { t, locale } from '$lib/i18n';
-	import { page } from '$app/stores';
-	import { resolve } from '$app/paths';
-	import { switchLocale } from '$lib/i18n/utils';
-	import type { PageData } from './$types';
+import "../app.css";
+import { resolve } from "$app/paths";
+import { page } from "$app/stores";
+import { locale, t } from "$lib/i18n";
+import { switchLocale } from "$lib/i18n/utils";
+import type { PageData } from "./$types";
 
-	export let data: PageData;
+export let data: PageData;
 
-	$: currentLocale = data.locale || 'en';
+$: currentLocale = data.locale || "en";
 
-	let settingsOpen = false;
-	let settingsWrap: HTMLDivElement;
+let settingsOpen = false;
+let settingsWrap: HTMLDivElement;
 
-	function toggleSettings() {
-		settingsOpen = !settingsOpen;
+function toggleSettings() {
+	settingsOpen = !settingsOpen;
+}
+
+function closeSettings(e: MouseEvent) {
+	if (
+		settingsOpen &&
+		settingsWrap &&
+		!settingsWrap.contains(e.target as Node)
+	) {
+		settingsOpen = false;
 	}
+}
 
-	function closeSettings(e: MouseEvent) {
-		if (settingsOpen && settingsWrap && !settingsWrap.contains(e.target as Node)) {
-			settingsOpen = false;
-		}
-	}
+$: homeHref = resolve(currentLocale === "ru" ? "/ru" : "/");
+$: connectorsHref = resolve(
+	currentLocale === "ru" ? "/ru/connectors" : "/connectors",
+);
+$: workflowsHref = resolve(
+	currentLocale === "ru" ? "/ru/workflows" : "/workflows",
+);
+$: apiKeysHref = resolve(
+	currentLocale === "ru" ? "/ru/settings/api-keys" : "/settings/api-keys",
+);
 
-	$: homeHref = resolve(currentLocale === 'ru' ? '/ru' : '/');
-	$: connectorsHref = resolve(currentLocale === 'ru' ? '/ru/connectors' : '/connectors');
-	$: workflowsHref = resolve(currentLocale === 'ru' ? '/ru/workflows' : '/workflows');
-	$: apiKeysHref = resolve(
-		currentLocale === 'ru' ? '/ru/settings/api-keys' : '/settings/api-keys'
-	);
-
-	async function switchLanguage() {
-		const newLocale = currentLocale === 'ru' ? 'en' : 'ru';
-		locale.set(newLocale);
-		await switchLocale($page.url.pathname, newLocale, currentLocale);
-	}
+async function switchLanguage() {
+	const newLocale = currentLocale === "ru" ? "en" : "ru";
+	locale.set(newLocale);
+	await switchLocale($page.url.pathname, newLocale, currentLocale);
+}
 </script>
 
 <svelte:window on:click={closeSettings} />

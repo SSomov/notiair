@@ -1,5 +1,5 @@
-import { base } from "$app/paths";
 import { goto } from "$app/navigation";
+import { base } from "$app/paths";
 
 function withoutAppBase(pathname: string): string {
 	if (base && pathname.startsWith(base)) {

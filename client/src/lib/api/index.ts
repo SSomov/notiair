@@ -175,9 +175,11 @@ export async function listTelegramTokens(): Promise<TelegramToken[]> {
 	return Array.isArray(data) ? data : [];
 }
 
-export async function createTelegramToken(
-	payload: { name: string; secret: string; comment: string },
-): Promise<TelegramToken> {
+export async function createTelegramToken(payload: {
+	name: string;
+	secret: string;
+	comment: string;
+}): Promise<TelegramToken> {
 	const res = await fetch(`${API_URL}/connectors/telegram`, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
@@ -303,7 +305,12 @@ export async function listChannels(connectorId: string): Promise<Channel[]> {
 
 export async function createChannel(
 	connectorId: string,
-	payload: { name: string; displayName?: string; description: string; muted: boolean },
+	payload: {
+		name: string;
+		displayName?: string;
+		description: string;
+		muted: boolean;
+	},
 ): Promise<Channel> {
 	const res = await fetch(`${API_URL}/connectors/${connectorId}/channels`, {
 		method: "POST",
@@ -316,7 +323,12 @@ export async function createChannel(
 
 export async function updateChannel(
 	id: string,
-	payload: { name: string; displayName?: string; description: string; muted: boolean },
+	payload: {
+		name: string;
+		displayName?: string;
+		description: string;
+		muted: boolean;
+	},
 ): Promise<Channel> {
 	const res = await fetch(`${API_URL}/channels/${id}`, {
 		method: "PUT",
@@ -338,17 +350,20 @@ export type StreamEvent = {
 	event_id: string;
 	event_type: string;
 	occurred_at: string;
-	context: Record<string, any>;
-	metadata: Record<string, any>;
+	context: Record<string, unknown>;
+	metadata: Record<string, unknown>;
 };
 
-export async function getStreamMessages(eventTypes: string[] = [], limit: number = 10): Promise<StreamEvent[]> {
+export async function getStreamMessages(
+	eventTypes: string[] = [],
+	limit: number = 10,
+): Promise<StreamEvent[]> {
 	const params = new URLSearchParams();
-	if (eventTypes.length > 0) {
-		eventTypes.forEach(et => params.append("eventTypes", et));
+	for (const et of eventTypes) {
+		params.append("eventTypes", et);
 	}
 	params.append("limit", limit.toString());
-	
+
 	const res = await fetch(`${API_URL}/stream/messages?${params.toString()}`);
 	if (!res.ok) throw new Error("errors.loadMessages");
 	return res.json();

@@ -1,870 +1,937 @@
 <script lang="ts">
-	import { draggable } from '@neodrag/svelte';
-	import type { DragEventData } from '@neodrag/svelte';
-	import { onDestroy, onMount, tick } from 'svelte';
-	import { get } from 'svelte/store';
-	import { locale, t } from '$lib/i18n';
-	import { resolveI18nError } from '$lib/i18n/resolveError';
-	import { parseJsonStrict, type JsonParseError } from '$lib/parseJson';
-	import { page } from '$app/stores';
-	import {
-		saveWorkflow,
-		getWorkflow,
-		listWorkflowVersions,
-		getWorkflowVersion,
-		restoreWorkflowVersion,
-		listTelegramTokens,
-		listSmtpAccounts,
-		listChannels,
-		dispatchNotification,
-		type Channel,
-	} from '$lib/api';
-	import StorageRecordsPanel from '$lib/components/StorageRecordsPanel.svelte';
-	import type {
-		WorkflowDraft,
-		WorkflowVersion,
-		WorkflowVersionMeta,
-	} from '$lib/types/workflow';
-	import TelegramIcon from '$lib/components/TelegramIcon.svelte';
+import type { DragEventData } from "@neodrag/svelte";
+import { draggable } from "@neodrag/svelte";
+import { onDestroy, onMount, tick } from "svelte";
+import { get } from "svelte/store";
+import { page } from "$app/stores";
+import {
+	type Channel,
+	dispatchNotification,
+	getWorkflow,
+	getWorkflowVersion,
+	listChannels,
+	listSmtpAccounts,
+	listTelegramTokens,
+	listWorkflowVersions,
+	restoreWorkflowVersion,
+	saveWorkflow,
+} from "$lib/api";
+import StorageRecordsPanel from "$lib/components/StorageRecordsPanel.svelte";
+import TelegramIcon from "$lib/components/TelegramIcon.svelte";
+import { locale, t } from "$lib/i18n";
+import { resolveI18nError } from "$lib/i18n/resolveError";
+import { type JsonParseError, parseJsonStrict } from "$lib/parseJson";
+import type {
+	WorkflowDraft,
+	WorkflowVersion,
+	WorkflowVersionMeta,
+} from "$lib/types/workflow";
 
-	type TriggerOption = {
-		name: string;
-		disabled?: boolean;
-	};
+type TriggerOption = {
+	name: string;
+	disabled?: boolean;
+};
 
-	const triggerOptions: TriggerOption[] = [
-		{ name: 'API', disabled: true },
-		{ name: 'Stream broker' },
-		{ name: 'Manual' },
-	];
-	let triggerMenuOpen = false;
-	let nodeMenuOpenId: string | null = null;
+const triggerOptions: TriggerOption[] = [
+	{ name: "API", disabled: true },
+	{ name: "Stream broker" },
+	{ name: "Manual" },
+];
+let triggerMenuOpen = false;
+let nodeMenuOpenId: string | null = null;
 
-	let workflowId: string | null = null;
-	let workflowName = '';
-	/** Описание самого workflow (не ноды на холсте) */
-	let workflowDescription = '';
-	let editingName = false;
-	let isActive = false; // По умолчанию черновик
-	let saving = false;
-	let historyPanelOpen = false;
-	let versions: WorkflowVersionMeta[] = [];
-	let versionsLoading = false;
-	let selectedVersionId: string | null = null;
-	let previewVersion: WorkflowVersion | null = null;
-	let previewLoading = false;
-	let restoringVersion = false;
-	let loading = false;
-	let error: string | null = null;
+let workflowId: string | null = null;
+let workflowName = "";
+/** Описание самого workflow (не ноды на холсте) */
+let workflowDescription = "";
+let editingName = false;
+let isActive = false; // По умолчанию черновик
+let saving = false;
+let historyPanelOpen = false;
+let versions: WorkflowVersionMeta[] = [];
+let versionsLoading = false;
+let selectedVersionId: string | null = null;
+let previewVersion: WorkflowVersion | null = null;
+let previewLoading = false;
+let restoringVersion = false;
+let loading = false;
+let error: string | null = null;
 
-	type StorageMode = 'raw' | 'rendered';
-	type NodeVariant = 'trigger' | 'template' | 'storage' | 'channel';
-	type PortType = 'left' | 'right';
+type StorageMode = "raw" | "rendered";
+type NodeVariant = "trigger" | "template" | "storage" | "channel";
+type PortType = "left" | "right";
 
-	type CanvasNode = {
-		id: string;
-		label: string;
-		description: string;
-		variant: NodeVariant;
-		position: { x: number; y: number };
-		selectedChannelId?: string;
-		selectedChannelName?: string;
-		selectedChannelConnectorId?: string;
-		selectedChannelConnectorType?: 'telegram' | 'slack' | 'smtp';
-		templateBody?: string;
-		templatePayload?: Record<string, any>;
-		triggerPayload?: Record<string, any>;
-		eventTypes?: string[];
-		storageMode?: StorageMode;
-	};
+type CanvasNode = {
+	id: string;
+	label: string;
+	description: string;
+	variant: NodeVariant;
+	position: { x: number; y: number };
+	selectedChannelId?: string;
+	selectedChannelName?: string;
+	selectedChannelConnectorId?: string;
+	selectedChannelConnectorType?: "telegram" | "slack" | "smtp";
+	templateBody?: string;
+	templatePayload?: Record<string, unknown>;
+	triggerPayload?: Record<string, unknown>;
+	eventTypes?: string[];
+	storageMode?: StorageMode;
+};
 
-	type Edge = {
-		id: string;
-		from: { nodeId: string; port: PortType };
-		to: { nodeId: string; port: PortType };
-	};
+type Edge = {
+	id: string;
+	from: { nodeId: string; port: PortType };
+	to: { nodeId: string; port: PortType };
+};
 
-	type ConnectingState = {
-		nodeId: string;
-		port: PortType;
-	} | null;
+type ConnectingState = {
+	nodeId: string;
+	port: PortType;
+} | null;
 
-	let nodes: CanvasNode[] = [];
-	let edges: Edge[] = [];
-	let connecting: ConnectingState = null;
-	let mousePosition: { x: number; y: number } | null = null;
-	let workspaceElement: HTMLDivElement;
-	let workspaceCanvasScaleElement: HTMLDivElement;
-	let workspaceExpanded = false;
-	let workspaceZoom = 1;
-	const WORKSPACE_ZOOM_MIN = 0.25;
-	const WORKSPACE_ZOOM_MAX = 2;
-	const WORKSPACE_ZOOM_STEP = 0.1;
+let nodes: CanvasNode[] = [];
+let edges: Edge[] = [];
+let connecting: ConnectingState = null;
+let mousePosition: { x: number; y: number } | null = null;
+let workspaceElement: HTMLDivElement;
+let workspaceCanvasScaleElement: HTMLDivElement;
+let workspaceExpanded = false;
+let workspaceZoom = 1;
+const WORKSPACE_ZOOM_MIN = 0.25;
+const WORKSPACE_ZOOM_MAX = 2;
+const WORKSPACE_ZOOM_STEP = 0.1;
 
-	const clampWorkspaceZoom = (z: number) =>
-		Math.min(WORKSPACE_ZOOM_MAX, Math.max(WORKSPACE_ZOOM_MIN, z));
+const clampWorkspaceZoom = (z: number) =>
+	Math.min(WORKSPACE_ZOOM_MAX, Math.max(WORKSPACE_ZOOM_MIN, z));
 
-	/** После смены scale у холста getBoundingClientRect в том же кадре может быть от старого layout — пересчитываем рёбра после reflow. */
-	const bumpWorkspaceLayout = () => {
-		tick().then(() => {
+/** После смены scale у холста getBoundingClientRect в том же кадре может быть от старого layout — пересчитываем рёбра после reflow. */
+const bumpWorkspaceLayout = () => {
+	tick().then(() => {
+		requestAnimationFrame(() => {
 			requestAnimationFrame(() => {
-				requestAnimationFrame(() => {
-					windowResizeTrigger += 1;
-				});
+				windowResizeTrigger += 1;
 			});
 		});
+	});
+};
+
+const handleWorkspaceZoomIn = () => {
+	workspaceZoom = clampWorkspaceZoom(
+		Math.round((workspaceZoom + WORKSPACE_ZOOM_STEP) * 100) / 100,
+	);
+	bumpWorkspaceLayout();
+};
+
+const handleWorkspaceZoomOut = () => {
+	workspaceZoom = clampWorkspaceZoom(
+		Math.round((workspaceZoom - WORKSPACE_ZOOM_STEP) * 100) / 100,
+	);
+	bumpWorkspaceLayout();
+};
+
+const handleWorkspaceZoomReset = () => {
+	workspaceZoom = clampWorkspaceZoom(1);
+	bumpWorkspaceLayout();
+};
+
+// Состояние для выбора канала
+let channelSelectModalOpen = false;
+let editingChannelNodeId: string | null = null;
+let availableChannels: ChannelWithConnector[] = [];
+let loadingChannels = false;
+
+// Состояние для редактирования template
+let templateEditModalOpen = false;
+let editingTemplateNodeId: string | null = null;
+let templateBody = "";
+let templatePayloadJson = "{}";
+let templatePayload: Record<string, unknown> = {};
+let templatePayloadError: string | null = null;
+
+let storageEditModalOpen = false;
+let editingStorageNodeId: string | null = null;
+let storageModeDraft: StorageMode = "raw";
+
+let storageRecordsModalOpen = false;
+let viewingStorageNodeId: string | null = null;
+
+// Состояние для редактирования payload триггера
+let triggerPayloadModalOpen = false;
+let editingTriggerNodeId: string | null = null;
+let triggerPayloadJson = "{}";
+let triggerPayload: Record<string, unknown> = {};
+let triggerPayloadParseError: JsonParseError | null = null;
+
+// Состояние для кнопки Play у Manual триггера
+let playingManualNodeId: string | null = null;
+
+// Состояние для редактирования event_types Stream broker
+let eventTypesModalOpen = false;
+let editingStreamBrokerNodeId: string | null = null;
+let selectedEventTypes: string[] = [];
+let newEventType = "";
+let recentMessages: Array<{
+	event_id: string;
+	event_type: string;
+	occurred_at: string;
+	context: Record<string, unknown>;
+	metadata: Record<string, unknown>;
+}> = [];
+let loadingMessages = false;
+let wsConnection: WebSocket | null = null;
+const availableEventTypes = [
+	"user.registered",
+	"user.login",
+	"user.logout",
+	"user.profile.updated",
+	"user.password.changed",
+	"user.email.verified",
+	"user.suspended",
+	"user.deleted",
+];
+
+// Базовый payload с предзаполненными переменными (только для фронта)
+function getDefaultPayload() {
+	const tr = get(t);
+	return {
+		event_id: "7c3e16a5-9853-4910-a94f-7305a41e8ffe",
+		event_type: "user.login",
+		occurred_at: "2026-01-29T22:05:53Z",
+		context: {
+			email: "user8682177e@example.com",
+			phone: "+420000192749",
+		},
+		metadata: {
+			source: "auth-service",
+		},
+		userName: tr("workflowBuilder.demo.userName"),
+		userEmail: "ivan@example.com",
+		message: tr("workflowBuilder.demo.message"),
+		timestamp: "2024-01-19 15:30:00",
+		workflowName: tr("workflows.newWorkflow"),
+		status: tr("workflowBuilder.demo.status"),
+		count: 42,
 	};
+}
 
-	const handleWorkspaceZoomIn = () => {
-		workspaceZoom = clampWorkspaceZoom(
-			Math.round((workspaceZoom + WORKSPACE_ZOOM_STEP) * 100) / 100
-		);
-		bumpWorkspaceLayout();
-	};
+let errorDisplay: string | null = null;
+let templatePayloadErrorDisplay: string | null = null;
+let triggerPayloadErrorDisplay: string | null = null;
 
-	const handleWorkspaceZoomOut = () => {
-		workspaceZoom = clampWorkspaceZoom(
-			Math.round((workspaceZoom - WORKSPACE_ZOOM_STEP) * 100) / 100
-		);
-		bumpWorkspaceLayout();
-	};
+$: {
+	$locale;
+	errorDisplay = error ? resolveI18nError(error) : null;
+	templatePayloadErrorDisplay = templatePayloadError
+		? resolveI18nError(templatePayloadError)
+		: null;
+	triggerPayloadErrorDisplay = triggerPayloadParseError
+		? formatJsonParseError(triggerPayloadParseError)
+		: null;
+}
 
-	const handleWorkspaceZoomReset = () => {
-		workspaceZoom = clampWorkspaceZoom(1);
-		bumpWorkspaceLayout();
-	};
-
-	// Состояние для выбора канала
-	let channelSelectModalOpen = false;
-	let editingChannelNodeId: string | null = null;
-	let availableChannels: ChannelWithConnector[] = [];
-	let loadingChannels = false;
-
-	// Состояние для редактирования template
-	let templateEditModalOpen = false;
-	let editingTemplateNodeId: string | null = null;
-	let templateBody = '';
-	let templatePayloadJson = '{}';
-	let templatePayload: Record<string, any> = {};
-	let templatePayloadError: string | null = null;
-
-	let storageEditModalOpen = false;
-	let editingStorageNodeId: string | null = null;
-	let storageModeDraft: StorageMode = 'raw';
-
-	let storageRecordsModalOpen = false;
-	let viewingStorageNodeId: string | null = null;
-
-	// Состояние для редактирования payload триггера
-	let triggerPayloadModalOpen = false;
-	let editingTriggerNodeId: string | null = null;
-	let triggerPayloadJson = '{}';
-	let triggerPayload: Record<string, any> = {};
-	let triggerPayloadParseError: JsonParseError | null = null;
-
-	// Состояние для кнопки Play у Manual триггера
-	let playingManualNodeId: string | null = null;
-
-	// Состояние для редактирования event_types Stream broker
-	let eventTypesModalOpen = false;
-	let editingStreamBrokerNodeId: string | null = null;
-	let selectedEventTypes: string[] = [];
-	let newEventType = '';
-	let recentMessages: Array<{
-		event_id: string;
-		event_type: string;
-		occurred_at: string;
-		context: Record<string, any>;
-		metadata: Record<string, any>;
-	}> = [];
-	let loadingMessages = false;
-	let wsConnection: WebSocket | null = null;
-	const availableEventTypes = [
-		'user.registered',
-		'user.login',
-		'user.logout',
-		'user.profile.updated',
-		'user.password.changed',
-		'user.email.verified',
-		'user.suspended',
-		'user.deleted',
-	];
-
-	// Базовый payload с предзаполненными переменными (только для фронта)
-	function getDefaultPayload() {
-		const tr = get(t);
-		return {
-			event_id: '7c3e16a5-9853-4910-a94f-7305a41e8ffe',
-			event_type: 'user.login',
-			occurred_at: '2026-01-29T22:05:53Z',
-			context: {
-				email: 'user8682177e@example.com',
-				phone: '+420000192749',
-			},
-			metadata: {
-				source: 'auth-service',
-			},
-			userName: tr('workflowBuilder.demo.userName'),
-			userEmail: 'ivan@example.com',
-			message: tr('workflowBuilder.demo.message'),
-			timestamp: '2024-01-19 15:30:00',
-			workflowName: tr('workflows.newWorkflow'),
-			status: tr('workflowBuilder.demo.status'),
-			count: 42,
-		};
+function formatJsonParseError(parseError: {
+	message: string;
+	line: number | null;
+}): string {
+	const tr = get(t);
+	if (parseError.line !== null) {
+		return tr("errors.invalidJsonAtLine", {
+			line: parseError.line,
+			message: parseError.message,
+		});
 	}
+	return `${tr("errors.invalidJsonPayload")}: ${parseError.message}`;
+}
 
-	let errorDisplay: string | null = null;
-	let templatePayloadErrorDisplay: string | null = null;
-	let triggerPayloadErrorDisplay: string | null = null;
-
-	$: {
-		$locale;
-		errorDisplay = error ? resolveI18nError(error) : null;
-		templatePayloadErrorDisplay = templatePayloadError
-			? resolveI18nError(templatePayloadError)
-			: null;
-		triggerPayloadErrorDisplay = triggerPayloadParseError
-			? formatJsonParseError(triggerPayloadParseError)
-			: null;
+function getChannelConnectorType(
+	node: CanvasNode,
+): "telegram" | "slack" | "smtp" | null {
+	if (node.variant !== "channel" || !node.selectedChannelConnectorId)
+		return null;
+	if (node.selectedChannelConnectorType)
+		return node.selectedChannelConnectorType;
+	if (
+		node.selectedChannelId &&
+		node.selectedChannelId === node.selectedChannelConnectorId
+	) {
+		return "smtp";
 	}
+	return "telegram";
+}
 
-	function formatJsonParseError(parseError: { message: string; line: number | null }): string {
-		const tr = get(t);
-		if (parseError.line !== null) {
-			return tr('errors.invalidJsonAtLine', {
-				line: parseError.line,
-				message: parseError.message,
+function selectTrigger(option: TriggerOption) {
+	if (option.disabled) return; // Не создаем неактивные триггеры
+
+	triggerMenuOpen = false;
+
+	// Создаем новую ноду триггера с выбранным типом
+	const triggerCount = nodes.filter((n) => n.variant === "trigger").length;
+	const newTrigger: CanvasNode = {
+		id: generateNodeId("trigger"),
+		label: option.name,
+		description: option.name,
+		variant: "trigger",
+		position: { x: 100 + triggerCount * 300, y: 100 + triggerCount * 100 },
+	};
+	nodes = [...nodes, newTrigger];
+}
+
+async function handleDrag({ detail }: CustomEvent<DragEventData>, id: string) {
+	nodes = nodes.map((node) =>
+		node.id === id
+			? {
+					...node,
+					position: {
+						x: detail.offsetX,
+						y: detail.offsetY,
+					},
+				}
+			: node,
+	);
+	// Ждем обновления DOM перед пересчетом линий
+	await tick();
+	// Принудительно обновляем реактивность для edgePaths
+	nodes = [...nodes];
+}
+
+function getConnectorPosition(
+	nodeId: string,
+	port: PortType,
+): { x: number; y: number } | null {
+	const node = nodes.find((n) => n.id === nodeId);
+	if (!node || !workspaceCanvasScaleElement) return null;
+
+	// Найти DOM элемент ноды и коннектора для точного расчета координат
+	const nodeElement = document.querySelector(
+		`[data-node-id="${nodeId}"]`,
+	) as HTMLElement;
+	if (!nodeElement) return null;
+
+	// Найти конкретный коннектор (left или right)
+	const connectorElement = nodeElement.querySelector(
+		`.connector.${port}`,
+	) as HTMLElement;
+	if (!connectorElement) return null;
+
+	// Центр коннектора в viewport, затем в системе координат SVG (до scale), совпадающей с layout внутри .workspace-canvas-scale
+	const connectorRect = connectorElement.getBoundingClientRect();
+	const canvasRect = workspaceCanvasScaleElement.getBoundingClientRect();
+	const z = workspaceZoom || 1;
+
+	const connectorCenterX =
+		(connectorRect.left + connectorRect.width / 2 - canvasRect.left) / z;
+	const connectorCenterY =
+		(connectorRect.top + connectorRect.height / 2 - canvasRect.top) / z;
+
+	return { x: connectorCenterX, y: connectorCenterY };
+}
+
+function handleConnectorClick(
+	nodeId: string,
+	port: PortType,
+	event: MouseEvent,
+) {
+	event.stopPropagation();
+
+	if (connecting) {
+		// Завершаем соединение
+		if (connecting.nodeId !== nodeId || connecting.port !== port) {
+			// Не позволяем соединять точку с самой собой
+			const edgeId = `${connecting.nodeId}-${connecting.port}-${nodeId}-${port}`;
+			const newEdge: Edge = {
+				id: edgeId,
+				from: connecting,
+				to: { nodeId, port },
+			};
+
+			// Проверяем, нет ли уже такого соединения
+			const exists = edges.some(
+				(e) =>
+					(e.from.nodeId === newEdge.from.nodeId &&
+						e.from.port === newEdge.from.port &&
+						e.to.nodeId === newEdge.to.nodeId &&
+						e.to.port === newEdge.to.port) ||
+					(e.from.nodeId === newEdge.to.nodeId &&
+						e.from.port === newEdge.to.port &&
+						e.to.nodeId === newEdge.from.nodeId &&
+						e.to.port === newEdge.from.port),
+			);
+
+			if (!exists) {
+				edges = [...edges, newEdge];
+			}
+		}
+		connecting = null;
+	} else {
+		// Начинаем новое соединение
+		connecting = { nodeId, port };
+	}
+}
+
+function cancelConnection() {
+	connecting = null;
+	mousePosition = null;
+	triggerMenuOpen = false;
+	closeNodeMenu();
+}
+
+function handleGlobalKeydown(e: KeyboardEvent) {
+	if (e.key !== "Escape") return;
+	if (connecting) {
+		cancelConnection();
+		return;
+	}
+	if (workspaceExpanded) {
+		workspaceExpanded = false;
+	}
+}
+
+const handleToggleWorkspaceExpand = () => {
+	workspaceExpanded = !workspaceExpanded;
+};
+
+function generateNodeId(variant: NodeVariant): string {
+	const existingIds = nodes.map((n) => n.id);
+	let counter = 1;
+	let newId = `${variant}-node-${counter}`;
+	while (existingIds.includes(newId)) {
+		counter++;
+		newId = `${variant}-node-${counter}`;
+	}
+	return newId;
+}
+
+function addChannelNode() {
+	const channelCount = nodes.filter((n) => n.variant === "channel").length;
+	const newChannel: CanvasNode = {
+		id: generateNodeId("channel"),
+		label: "Channel",
+		description: get(t)("workflowBuilder.newChannelDelivery"),
+		variant: "channel",
+		position: { x: 200 + channelCount * 280, y: 200 + channelCount * 80 },
+	};
+	nodes = [...nodes, newChannel];
+}
+
+type ChannelWithConnector = Channel & {
+	connectorId: string;
+	connectorType: "telegram" | "slack" | "smtp";
+};
+
+async function openChannelSelect(nodeId: string) {
+	editingChannelNodeId = nodeId;
+	channelSelectModalOpen = true;
+	loadingChannels = true;
+
+	try {
+		const [tokens, smtpAccounts] = await Promise.all([
+			listTelegramTokens(),
+			listSmtpAccounts(),
+		]);
+		const activeTokens = tokens.filter((t) => t.isActive);
+		const activeSmtp = smtpAccounts.filter((a) => a.isActive);
+
+		const allChannels: ChannelWithConnector[] = [];
+		for (const token of activeTokens) {
+			try {
+				const channels = await listChannels(token.id);
+				allChannels.push(
+					...channels.map((ch) => ({
+						...ch,
+						connectorId: token.id,
+						connectorType: "telegram" as const,
+					})),
+				);
+			} catch (e) {
+				console.error(`Failed to load channels for ${token.id}:`, e);
+			}
+		}
+
+		for (const acc of activeSmtp) {
+			const descParts = [acc.from, acc.host].filter(Boolean);
+			allChannels.push({
+				id: acc.id,
+				name: acc.name,
+				displayName: acc.name,
+				description:
+					descParts.length > 0 ? descParts.join(" · ") : acc.comment || "",
+				muted: false,
+				connectorId: acc.id,
+				connectorType: "smtp" as const,
 			});
 		}
-		return `${tr('errors.invalidJsonPayload')}: ${parseError.message}`;
-	}
 
-	function getChannelConnectorType(node: CanvasNode): 'telegram' | 'slack' | 'smtp' | null {
-		if (node.variant !== 'channel' || !node.selectedChannelConnectorId) return null;
-		if (node.selectedChannelConnectorType) return node.selectedChannelConnectorType;
-		if (
-			node.selectedChannelId &&
-			node.selectedChannelId === node.selectedChannelConnectorId
-		) {
-			return 'smtp';
+		availableChannels = allChannels;
+	} catch (e) {
+		console.error("Error loading channels:", e);
+		error = e instanceof Error ? e.message : "errors.loadChannels";
+		availableChannels = [];
+	} finally {
+		loadingChannels = false;
+	}
+}
+
+function selectChannel(channel: ChannelWithConnector) {
+	if (!editingChannelNodeId) return;
+
+	nodes = nodes.map((node) => {
+		if (node.id === editingChannelNodeId) {
+			return {
+				...node,
+				selectedChannelId: channel.id,
+				selectedChannelName: channel.displayName || channel.name,
+				selectedChannelConnectorId: channel.connectorId,
+				selectedChannelConnectorType: channel.connectorType,
+				description: channel.description || channel.displayName || channel.name,
+			};
 		}
-		return 'telegram';
+		return node;
+	});
+
+	channelSelectModalOpen = false;
+	editingChannelNodeId = null;
+}
+
+function closeChannelSelect() {
+	channelSelectModalOpen = false;
+	editingChannelNodeId = null;
+	availableChannels = [];
+}
+
+function openTemplateEdit(nodeId: string) {
+	editingTemplateNodeId = nodeId;
+	const node = nodes.find((n) => n.id === nodeId);
+	if (
+		node &&
+		node.templatePayload &&
+		Object.keys(node.templatePayload).length > 0
+	) {
+		// Используем сохраненный payload из ноды
+		templateBody = node.templateBody || "";
+		templatePayload = node.templatePayload;
+		templatePayloadJson = JSON.stringify(templatePayload, null, 2);
+	} else {
+		// Используем базовый payload по умолчанию
+		templateBody = node?.templateBody || "";
+		const dp = getDefaultPayload();
+		templatePayload = { ...dp };
+		templatePayloadJson = JSON.stringify(dp, null, 2);
+	}
+	templateEditModalOpen = true;
+}
+
+function closeTemplateEdit() {
+	templateEditModalOpen = false;
+	editingTemplateNodeId = null;
+	templateBody = "";
+	templatePayloadJson = "{}";
+	templatePayload = {};
+	templatePayloadError = null;
+}
+
+function getAvailableTriggers(): CanvasNode[] {
+	const templateNodeId = editingTemplateNodeId;
+	if (!templateNodeId) return [];
+
+	// Ищем все edges, которые ведут к этому шаблону
+	const incomingEdges = edges.filter(
+		(edge) => edge.to.nodeId === templateNodeId,
+	);
+
+	const triggers: CanvasNode[] = [];
+
+	if (incomingEdges.length > 0) {
+		// Собираем все связанные триггеры
+		for (const edge of incomingEdges) {
+			const node = nodes.find(
+				(n) => n.id === edge.from.nodeId && n.variant === "trigger",
+			);
+			if (
+				node &&
+				node.triggerPayload &&
+				Object.keys(node.triggerPayload).length > 0
+			) {
+				triggers.push(node);
+			}
+		}
 	}
 
-	function selectTrigger(option: TriggerOption) {
-		if (option.disabled) return; // Не создаем неактивные триггеры
-
-		triggerMenuOpen = false;
-
-		// Создаем новую ноду триггера с выбранным типом
-		const triggerCount = nodes.filter((n) => n.variant === 'trigger').length;
-		const newTrigger: CanvasNode = {
-			id: generateNodeId('trigger'),
-			label: option.name,
-			description: option.name,
-			variant: 'trigger',
-			position: { x: 100 + triggerCount * 300, y: 100 + triggerCount * 100 },
-		};
-		nodes = [...nodes, newTrigger];
-	}
-
-	async function handleDrag({ detail }: CustomEvent<DragEventData>, id: string) {
-		nodes = nodes.map((node) =>
-			node.id === id
-				? {
-						...node,
-						position: {
-							x: detail.offsetX,
-							y: detail.offsetY,
-						},
-					}
-				: node
+	// Если нет прямых связей, ищем все триггеры в workflow
+	if (triggers.length === 0) {
+		const allTriggers = nodes.filter(
+			(n) =>
+				n.variant === "trigger" &&
+				n.triggerPayload &&
+				Object.keys(n.triggerPayload).length > 0,
 		);
-		// Ждем обновления DOM перед пересчетом линий
-		await tick();
-		// Принудительно обновляем реактивность для edgePaths
-		nodes = [...nodes];
+		triggers.push(...allTriggers);
 	}
 
-	function getConnectorPosition(nodeId: string, port: PortType): { x: number; y: number } | null {
-		const node = nodes.find((n) => n.id === nodeId);
-		if (!node || !workspaceCanvasScaleElement) return null;
+	// Сортируем: Manual первым, затем остальные
+	return triggers.sort((a, b) => {
+		if (a.label === "Manual") return -1;
+		if (b.label === "Manual") return 1;
+		return 0;
+	});
+}
 
-		// Найти DOM элемент ноды и коннектора для точного расчета координат
-		const nodeElement = document.querySelector(`[data-node-id="${nodeId}"]`) as HTMLElement;
-		if (!nodeElement) return null;
+function updatePayloadFromTrigger(triggerNodeId?: string) {
+	// Очищаем предыдущую ошибку
+	templatePayloadError = null;
 
-		// Найти конкретный коннектор (left или right)
-		const connectorElement = nodeElement.querySelector(`.connector.${port}`) as HTMLElement;
-		if (!connectorElement) return null;
-
-		// Центр коннектора в viewport, затем в системе координат SVG (до scale), совпадающей с layout внутри .workspace-canvas-scale
-		const connectorRect = connectorElement.getBoundingClientRect();
-		const canvasRect = workspaceCanvasScaleElement.getBoundingClientRect();
-		const z = workspaceZoom || 1;
-
-		const connectorCenterX = (connectorRect.left + connectorRect.width / 2 - canvasRect.left) / z;
-		const connectorCenterY = (connectorRect.top + connectorRect.height / 2 - canvasRect.top) / z;
-
-		return { x: connectorCenterX, y: connectorCenterY };
+	const templateNodeId = editingTemplateNodeId;
+	if (!templateNodeId) {
+		templatePayloadError = "errors.templateNotSelected";
+		return;
 	}
 
-	function handleConnectorClick(nodeId: string, port: PortType, event: MouseEvent) {
-		event.stopPropagation();
+	let triggerNode: CanvasNode | undefined;
 
-		if (connecting) {
-			// Завершаем соединение
-			if (connecting.nodeId !== nodeId || connecting.port !== port) {
-				// Не позволяем соединять точку с самой собой
-				const edgeId = `${connecting.nodeId}-${connecting.port}-${nodeId}-${port}`;
-				const newEdge: Edge = {
-					id: edgeId,
-					from: connecting,
-					to: { nodeId, port },
-				};
-
-				// Проверяем, нет ли уже такого соединения
-				const exists = edges.some(
-					(e) =>
-						(e.from.nodeId === newEdge.from.nodeId &&
-							e.from.port === newEdge.from.port &&
-							e.to.nodeId === newEdge.to.nodeId &&
-							e.to.port === newEdge.to.port) ||
-						(e.from.nodeId === newEdge.to.nodeId &&
-							e.from.port === newEdge.to.port &&
-							e.to.nodeId === newEdge.from.nodeId &&
-							e.to.port === newEdge.from.port)
-				);
-
-				if (!exists) {
-					edges = [...edges, newEdge];
-				}
-			}
-			connecting = null;
-		} else {
-			// Начинаем новое соединение
-			connecting = { nodeId, port };
+	if (triggerNodeId) {
+		// Ищем конкретный триггер по ID
+		triggerNode = nodes.find(
+			(n) => n.id === triggerNodeId && n.variant === "trigger",
+		);
+	} else {
+		// Старая логика для обратной совместимости
+		const availableTriggers = getAvailableTriggers();
+		if (availableTriggers.length > 0) {
+			triggerNode = availableTriggers[0];
 		}
 	}
 
-	function cancelConnection() {
-		connecting = null;
-		mousePosition = null;
-		triggerMenuOpen = false;
-		closeNodeMenu();
+	if (triggerNode && triggerNode.triggerPayload) {
+		templatePayload = { ...triggerNode.triggerPayload };
+		templatePayloadJson = JSON.stringify(triggerNode.triggerPayload, null, 2);
+		templatePayloadError = null;
+	} else {
+		templatePayloadError = "errors.triggerPayloadNotFound";
 	}
+}
 
-	function handleGlobalKeydown(e: KeyboardEvent) {
-		if (e.key !== 'Escape') return;
-		if (connecting) {
-			cancelConnection();
-			return;
-		}
-		if (workspaceExpanded) {
-			workspaceExpanded = false;
-		}
-	}
+function saveTemplate() {
+	if (!editingTemplateNodeId) return;
 
-	const handleToggleWorkspaceExpand = () => {
-		workspaceExpanded = !workspaceExpanded;
-	};
-
-	function generateNodeId(variant: NodeVariant): string {
-		const existingIds = nodes.map((n) => n.id);
-		let counter = 1;
-		let newId = `${variant}-node-${counter}`;
-		while (existingIds.includes(newId)) {
-			counter++;
-			newId = `${variant}-node-${counter}`;
-		}
-		return newId;
-	}
-
-	function addChannelNode() {
-		const channelCount = nodes.filter((n) => n.variant === 'channel').length;
-		const newChannel: CanvasNode = {
-			id: generateNodeId('channel'),
-			label: 'Channel',
-			description: get(t)('workflowBuilder.newChannelDelivery'),
-			variant: 'channel',
-			position: { x: 200 + channelCount * 280, y: 200 + channelCount * 80 },
-		};
-		nodes = [...nodes, newChannel];
-	}
-
-	type ChannelWithConnector = Channel & {
-		connectorId: string;
-		connectorType: 'telegram' | 'slack' | 'smtp';
-	};
-
-	async function openChannelSelect(nodeId: string) {
-		editingChannelNodeId = nodeId;
-		channelSelectModalOpen = true;
-		loadingChannels = true;
-
-		try {
-			const [tokens, smtpAccounts] = await Promise.all([
-				listTelegramTokens(),
-				listSmtpAccounts(),
-			]);
-			const activeTokens = tokens.filter((t) => t.isActive);
-			const activeSmtp = smtpAccounts.filter((a) => a.isActive);
-
-			const allChannels: ChannelWithConnector[] = [];
-			for (const token of activeTokens) {
-				try {
-					const channels = await listChannels(token.id);
-					allChannels.push(
-						...channels.map((ch) => ({
-							...ch,
-							connectorId: token.id,
-							connectorType: 'telegram' as const,
-						}))
-					);
-				} catch (e) {
-					console.error(`Failed to load channels for ${token.id}:`, e);
-				}
-			}
-
-			for (const acc of activeSmtp) {
-				const descParts = [acc.from, acc.host].filter(Boolean);
-				allChannels.push({
-					id: acc.id,
-					name: acc.name,
-					displayName: acc.name,
-					description:
-						descParts.length > 0 ? descParts.join(' · ') : acc.comment || '',
-					muted: false,
-					connectorId: acc.id,
-					connectorType: 'smtp' as const,
-				});
-			}
-
-			availableChannels = allChannels;
-		} catch (e) {
-			console.error('Error loading channels:', e);
-			error = e instanceof Error ? e.message : 'errors.loadChannels';
-			availableChannels = [];
-		} finally {
-			loadingChannels = false;
-		}
-	}
-
-	function selectChannel(channel: ChannelWithConnector) {
-		if (!editingChannelNodeId) return;
+	try {
+		// Парсим JSON payload
+		const payload = JSON.parse(templatePayloadJson);
 
 		nodes = nodes.map((node) => {
-			if (node.id === editingChannelNodeId) {
+			if (node.id === editingTemplateNodeId) {
+				const tr = get(t);
 				return {
 					...node,
-					selectedChannelId: channel.id,
-					selectedChannelName: channel.displayName || channel.name,
-					selectedChannelConnectorId: channel.connectorId,
-					selectedChannelConnectorType: channel.connectorType,
-					description: channel.description || channel.displayName || channel.name,
+					templateBody: templateBody,
+					templatePayload: payload,
+					description: templateBody
+						? `${tr("workflowBuilder.templatePrefix")} ${templateBody.substring(0, 30)}${templateBody.length > 30 ? "..." : ""}`
+						: tr("workflowBuilder.newTemplate"),
 				};
 			}
 			return node;
 		});
 
-		channelSelectModalOpen = false;
-		editingChannelNodeId = null;
+		closeTemplateEdit();
+	} catch (e) {
+		error = "errors.invalidJsonPayload";
+		console.error("Invalid JSON:", e);
 	}
+}
 
-	function closeChannelSelect() {
-		channelSelectModalOpen = false;
-		editingChannelNodeId = null;
-		availableChannels = [];
-	}
-
-	function openTemplateEdit(nodeId: string) {
-		editingTemplateNodeId = nodeId;
-		const node = nodes.find((n) => n.id === nodeId);
-		if (node && node.templatePayload && Object.keys(node.templatePayload).length > 0) {
-			// Используем сохраненный payload из ноды
-			templateBody = node.templateBody || '';
-			templatePayload = node.templatePayload;
-			templatePayloadJson = JSON.stringify(templatePayload, null, 2);
+// Реактивно обновляем templatePayload при изменении templatePayloadJson
+$: {
+	try {
+		if (templatePayloadJson && templatePayloadJson.trim()) {
+			templatePayload = JSON.parse(templatePayloadJson);
 		} else {
-			// Используем базовый payload по умолчанию
-			templateBody = node?.templateBody || '';
-			const dp = getDefaultPayload();
-			templatePayload = { ...dp };
-			templatePayloadJson = JSON.stringify(dp, null, 2);
-		}
-		templateEditModalOpen = true;
-	}
-
-	function closeTemplateEdit() {
-		templateEditModalOpen = false;
-		editingTemplateNodeId = null;
-		templateBody = '';
-		templatePayloadJson = '{}';
-		templatePayload = {};
-		templatePayloadError = null;
-	}
-
-	function getAvailableTriggers(): CanvasNode[] {
-		const templateNodeId = editingTemplateNodeId;
-		if (!templateNodeId) return [];
-
-		// Ищем все edges, которые ведут к этому шаблону
-		const incomingEdges = edges.filter((edge) => edge.to.nodeId === templateNodeId);
-
-		const triggers: CanvasNode[] = [];
-
-		if (incomingEdges.length > 0) {
-			// Собираем все связанные триггеры
-			for (const edge of incomingEdges) {
-				const node = nodes.find((n) => n.id === edge.from.nodeId && n.variant === 'trigger');
-				if (node && node.triggerPayload && Object.keys(node.triggerPayload).length > 0) {
-					triggers.push(node);
-				}
-			}
-		}
-
-		// Если нет прямых связей, ищем все триггеры в workflow
-		if (triggers.length === 0) {
-			const allTriggers = nodes.filter(
-				(n) =>
-					n.variant === 'trigger' && n.triggerPayload && Object.keys(n.triggerPayload).length > 0
-			);
-			triggers.push(...allTriggers);
-		}
-
-		// Сортируем: Manual первым, затем остальные
-		return triggers.sort((a, b) => {
-			if (a.label === 'Manual') return -1;
-			if (b.label === 'Manual') return 1;
-			return 0;
-		});
-	}
-
-	function updatePayloadFromTrigger(triggerNodeId?: string) {
-		// Очищаем предыдущую ошибку
-		templatePayloadError = null;
-
-		const templateNodeId = editingTemplateNodeId;
-		if (!templateNodeId) {
-			templatePayloadError = 'errors.templateNotSelected';
-			return;
-		}
-
-		let triggerNode: CanvasNode | undefined;
-
-		if (triggerNodeId) {
-			// Ищем конкретный триггер по ID
-			triggerNode = nodes.find((n) => n.id === triggerNodeId && n.variant === 'trigger');
-		} else {
-			// Старая логика для обратной совместимости
-			const availableTriggers = getAvailableTriggers();
-			if (availableTriggers.length > 0) {
-				triggerNode = availableTriggers[0];
-			}
-		}
-
-		if (triggerNode && triggerNode.triggerPayload) {
-			templatePayload = { ...triggerNode.triggerPayload };
-			templatePayloadJson = JSON.stringify(triggerNode.triggerPayload, null, 2);
-			templatePayloadError = null;
-		} else {
-			templatePayloadError = 'errors.triggerPayloadNotFound';
-		}
-	}
-
-	function saveTemplate() {
-		if (!editingTemplateNodeId) return;
-
-		try {
-			// Парсим JSON payload
-			const payload = JSON.parse(templatePayloadJson);
-
-			nodes = nodes.map((node) => {
-				if (node.id === editingTemplateNodeId) {
-					const tr = get(t);
-					return {
-						...node,
-						templateBody: templateBody,
-						templatePayload: payload,
-						description: templateBody
-							? `${tr('workflowBuilder.templatePrefix')} ${templateBody.substring(0, 30)}${templateBody.length > 30 ? '...' : ''}`
-							: tr('workflowBuilder.newTemplate'),
-					};
-				}
-				return node;
-			});
-
-			closeTemplateEdit();
-		} catch (e) {
-			error = 'errors.invalidJsonPayload';
-			console.error('Invalid JSON:', e);
-		}
-	}
-
-	// Реактивно обновляем templatePayload при изменении templatePayloadJson
-	$: {
-		try {
-			if (templatePayloadJson && templatePayloadJson.trim()) {
-				templatePayload = JSON.parse(templatePayloadJson);
-			} else {
-				templatePayload = {};
-			}
-		} catch (e) {
-			// Игнорируем ошибки парсинга во время ввода
 			templatePayload = {};
 		}
+	} catch (e) {
+		// Игнорируем ошибки парсинга во время ввода
+		templatePayload = {};
 	}
+}
 
-	$: templatePreview = renderTemplate(templateBody, templatePayload);
+$: templatePreview = renderTemplate(templateBody, templatePayload);
 
-	function renderTemplate(body: string, payload: Record<string, any>): string {
-		if (!body) return '';
+function renderTemplate(
+	body: string,
+	payload: Record<string, unknown>,
+): string {
+	if (!body) return "";
 
-		let result = body;
-		// Заменяем переменные вида {{variable}} или {{nested.property}} на значения из payload
-		result = result.replace(/\{\{([^}]+)\}\}/g, (match, path) => {
-			const value = getNestedValue(payload, path.trim());
-			return value !== undefined && value !== null ? String(value) : match;
-		});
+	let result = body;
+	// Заменяем переменные вида {{variable}} или {{nested.property}} на значения из payload
+	result = result.replace(/\{\{([^}]+)\}\}/g, (match, path) => {
+		const value = getNestedValue(payload, path.trim());
+		return value !== undefined && value !== null ? String(value) : match;
+	});
 
-		return result;
-	}
+	return result;
+}
 
-	function getNestedValue(obj: any, path: string): any {
-		if (!path) return undefined;
+function getNestedValue(obj: unknown, path: string): unknown {
+	if (!path) return undefined;
 
-		// Разбиваем путь по точкам
-		const keys = path.split('.');
-		let current = obj;
+	// Разбиваем путь по точкам
+	const keys = path.split(".");
+	let current: unknown = obj;
 
-		for (const key of keys) {
-			if (current === null || current === undefined) {
-				return undefined;
-			}
-			current = current[key];
+	for (const key of keys) {
+		if (current === null || current === undefined) {
+			return undefined;
 		}
-
-		return current;
+		if (typeof current !== "object") {
+			return undefined;
+		}
+		current = (current as Record<string, unknown>)[key];
 	}
 
-	function addTemplateNode() {
-		const templateCount = nodes.filter((n) => n.variant === 'template').length;
-		const newTemplate: CanvasNode = {
-			id: generateNodeId('template'),
-			label: 'Template',
-			description: get(t)('workflowBuilder.newTemplate'),
-			variant: 'template',
-			position: { x: 150 + templateCount * 300, y: 180 + templateCount * 100 },
+	return current;
+}
+
+function addTemplateNode() {
+	const templateCount = nodes.filter((n) => n.variant === "template").length;
+	const newTemplate: CanvasNode = {
+		id: generateNodeId("template"),
+		label: "Template",
+		description: get(t)("workflowBuilder.newTemplate"),
+		variant: "template",
+		position: { x: 150 + templateCount * 300, y: 180 + templateCount * 100 },
+	};
+	nodes = [...nodes, newTemplate];
+}
+
+function addStorageNode() {
+	const storageCount = nodes.filter((n) => n.variant === "storage").length;
+	const tr = get(t);
+	const newStorage: CanvasNode = {
+		id: generateNodeId("storage"),
+		label: tr("workflowBuilder.newStorage"),
+		description: tr("workflowBuilder.newStorage"),
+		variant: "storage",
+		storageMode: "raw",
+		position: { x: 300 + storageCount * 280, y: 200 + storageCount * 80 },
+	};
+	nodes = [...nodes, newStorage];
+}
+
+function openStorageEdit(nodeId: string) {
+	editingStorageNodeId = nodeId;
+	const node = nodes.find((n) => n.id === nodeId);
+	storageModeDraft = node?.storageMode ?? "raw";
+	storageEditModalOpen = true;
+}
+
+function closeStorageEdit() {
+	storageEditModalOpen = false;
+	editingStorageNodeId = null;
+}
+
+function saveStorageConfig() {
+	if (!editingStorageNodeId) return;
+	const tr = get(t);
+	nodes = nodes.map((node) => {
+		if (node.id !== editingStorageNodeId) return node;
+		const modeLabel =
+			storageModeDraft === "rendered"
+				? tr("workflowBuilder.storageModeRendered")
+				: tr("workflowBuilder.storageModeRaw");
+		return {
+			...node,
+			storageMode: storageModeDraft,
+			description: `${tr("workflowBuilder.storagePrefix")} ${modeLabel}`,
 		};
-		nodes = [...nodes, newTemplate];
+	});
+	closeStorageEdit();
+}
+
+function openStorageRecords(nodeId: string) {
+	if (!workflowId) {
+		error = "errors.saveWorkflowFirst";
+		return;
+	}
+	viewingStorageNodeId = nodeId;
+	storageRecordsModalOpen = true;
+}
+
+function closeStorageRecords() {
+	storageRecordsModalOpen = false;
+	viewingStorageNodeId = null;
+}
+
+function handleStorageRecordsLabelChange(newLabel: string) {
+	if (!viewingStorageNodeId) return;
+	nodes = nodes.map((node) =>
+		node.id === viewingStorageNodeId ? { ...node, label: newLabel } : node,
+	);
+}
+
+function handleStorageRecordsError(message: string) {
+	error = message;
+}
+
+$: viewingStorageNodeLabel =
+	viewingStorageNodeId != null
+		? (nodes.find((n) => n.id === viewingStorageNodeId)?.label ??
+			get(t)("workflowBuilder.newStorage"))
+		: "";
+
+$: workspaceZoomPercent = Math.round(workspaceZoom * 100);
+
+function openTriggerPayloadEdit(nodeId: string) {
+	editingTriggerNodeId = nodeId;
+	triggerPayloadParseError = null;
+	const node = nodes.find((n) => n.id === nodeId);
+	if (
+		node &&
+		node.triggerPayload &&
+		Object.keys(node.triggerPayload).length > 0
+	) {
+		// Используем сохраненный payload из ноды
+		triggerPayload = node.triggerPayload;
+		triggerPayloadJson = JSON.stringify(triggerPayload, null, 2);
+	} else {
+		const dp = getDefaultPayload();
+		triggerPayload = { ...dp };
+		triggerPayloadJson = JSON.stringify(dp, null, 2);
+	}
+	triggerPayloadModalOpen = true;
+}
+
+function closeTriggerPayloadEdit() {
+	triggerPayloadModalOpen = false;
+	editingTriggerNodeId = null;
+	triggerPayloadJson = "{}";
+	triggerPayload = {};
+	triggerPayloadParseError = null;
+}
+
+async function openEventTypesEdit(nodeId: string) {
+	editingStreamBrokerNodeId = nodeId;
+	const node = nodes.find((n) => n.id === nodeId);
+	selectedEventTypes = node?.eventTypes ? [...node.eventTypes] : [];
+	newEventType = "";
+	eventTypesModalOpen = true;
+	await loadRecentMessages();
+}
+
+async function loadRecentMessages() {
+	// Закрываем предыдущее соединение
+	if (wsConnection) {
+		wsConnection.close();
+		wsConnection = null;
 	}
 
-	function addStorageNode() {
-		const storageCount = nodes.filter((n) => n.variant === 'storage').length;
-		const tr = get(t);
-		const newStorage: CanvasNode = {
-			id: generateNodeId('storage'),
-			label: tr('workflowBuilder.newStorage'),
-			description: tr('workflowBuilder.newStorage'),
-			variant: 'storage',
-			storageMode: 'raw',
-			position: { x: 300 + storageCount * 280, y: 200 + storageCount * 80 },
-		};
-		nodes = [...nodes, newStorage];
-	}
-
-	function openStorageEdit(nodeId: string) {
-		editingStorageNodeId = nodeId;
-		const node = nodes.find((n) => n.id === nodeId);
-		storageModeDraft = node?.storageMode ?? 'raw';
-		storageEditModalOpen = true;
-	}
-
-	function closeStorageEdit() {
-		storageEditModalOpen = false;
-		editingStorageNodeId = null;
-	}
-
-	function saveStorageConfig() {
-		if (!editingStorageNodeId) return;
-		const tr = get(t);
-		nodes = nodes.map((node) => {
-			if (node.id !== editingStorageNodeId) return node;
-			const modeLabel =
-				storageModeDraft === 'rendered'
-					? tr('workflowBuilder.storageModeRendered')
-					: tr('workflowBuilder.storageModeRaw');
-			return {
-				...node,
-				storageMode: storageModeDraft,
-				description: `${tr('workflowBuilder.storagePrefix')} ${modeLabel}`,
-			};
-		});
-		closeStorageEdit();
-	}
-
-	function openStorageRecords(nodeId: string) {
-		if (!workflowId) {
-			error = 'errors.saveWorkflowFirst';
-			return;
-		}
-		viewingStorageNodeId = nodeId;
-		storageRecordsModalOpen = true;
-	}
-
-	function closeStorageRecords() {
-		storageRecordsModalOpen = false;
-		viewingStorageNodeId = null;
-	}
-
-	function handleStorageRecordsLabelChange(newLabel: string) {
-		if (!viewingStorageNodeId) return;
-		nodes = nodes.map((node) =>
-			node.id === viewingStorageNodeId ? { ...node, label: newLabel } : node,
-		);
-	}
-
-	function handleStorageRecordsError(message: string) {
-		error = message;
-	}
-
-	$: viewingStorageNodeLabel =
-		viewingStorageNodeId != null
-			? (nodes.find((n) => n.id === viewingStorageNodeId)?.label ??
-				get(t)('workflowBuilder.newStorage'))
-			: '';
-
-	$: workspaceZoomPercent = Math.round(workspaceZoom * 100);
-
-	function openTriggerPayloadEdit(nodeId: string) {
-		editingTriggerNodeId = nodeId;
-		triggerPayloadParseError = null;
-		const node = nodes.find((n) => n.id === nodeId);
-		if (node && node.triggerPayload && Object.keys(node.triggerPayload).length > 0) {
-			// Используем сохраненный payload из ноды
-			triggerPayload = node.triggerPayload;
-			triggerPayloadJson = JSON.stringify(triggerPayload, null, 2);
-		} else {
-			const dp = getDefaultPayload();
-			triggerPayload = { ...dp };
-			triggerPayloadJson = JSON.stringify(dp, null, 2);
-		}
-		triggerPayloadModalOpen = true;
-	}
-
-	function closeTriggerPayloadEdit() {
-		triggerPayloadModalOpen = false;
-		editingTriggerNodeId = null;
-		triggerPayloadJson = '{}';
-		triggerPayload = {};
-		triggerPayloadParseError = null;
-	}
-
-	async function openEventTypesEdit(nodeId: string) {
-		editingStreamBrokerNodeId = nodeId;
-		const node = nodes.find((n) => n.id === nodeId);
-		selectedEventTypes = node?.eventTypes ? [...node.eventTypes] : [];
-		newEventType = '';
-		eventTypesModalOpen = true;
-		await loadRecentMessages();
-	}
-
-	async function loadRecentMessages() {
-		// Закрываем предыдущее соединение
-		if (wsConnection) {
-			wsConnection.close();
-			wsConnection = null;
-		}
-
-		if (selectedEventTypes.length === 0) {
-			recentMessages = [];
-			return;
-		}
-
-		// Загружаем последние сообщения через HTTP
-		try {
-			loadingMessages = true;
-			recentMessages = await getStreamMessages(selectedEventTypes, 10);
-		} catch (e) {
-			console.error('Failed to load messages:', e);
-			recentMessages = [];
-		} finally {
-			loadingMessages = false;
-		}
-
-		// Подключаемся к WebSocket для получения новых сообщений в реальном времени
-		connectWebSocket();
-	}
-
-	function connectWebSocket() {
-		const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080/api/v1';
-
-		// Определяем WebSocket URL
-		let wsUrl: string;
-		if (API_URL.startsWith('http://')) {
-			wsUrl = API_URL.replace('http://', 'ws://');
-		} else if (API_URL.startsWith('https://')) {
-			wsUrl = API_URL.replace('https://', 'wss://');
-		} else {
-			// Если относительный URL, используем текущий протокол
-			const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-			wsUrl = `${protocol}//${window.location.host}${API_URL}`;
-		}
-
-		// Добавляем event types в query параметры
-		const eventTypesParam = encodeURIComponent(JSON.stringify(selectedEventTypes));
-		const fullWsUrl = `${wsUrl}/stream/ws?eventTypes=${eventTypesParam}`;
-
-		try {
-			wsConnection = new WebSocket(fullWsUrl);
-
-			wsConnection.onmessage = (event) => {
-				try {
-					const message = JSON.parse(event.data);
-					// Проверяем, соответствует ли сообщение выбранным event types
-					if (selectedEventTypes.length === 0 || selectedEventTypes.includes(message.event_type)) {
-						// Добавляем новое сообщение в начало списка
-						recentMessages = [message, ...recentMessages].slice(0, 10);
-					}
-				} catch (e) {
-					console.error('Failed to parse WebSocket message:', e);
-				}
-			};
-
-			wsConnection.onerror = (error) => {
-				console.error('WebSocket error:', error);
-			};
-
-			wsConnection.onclose = () => {
-				wsConnection = null;
-			};
-		} catch (e) {
-			console.error('Failed to connect WebSocket:', e);
-		}
-	}
-
-	function closeEventTypesEdit() {
-		// Закрываем WebSocket соединение
-		if (wsConnection) {
-			wsConnection.close();
-			wsConnection = null;
-		}
-
-		eventTypesModalOpen = false;
-		editingStreamBrokerNodeId = null;
-		selectedEventTypes = [];
-		newEventType = '';
+	if (selectedEventTypes.length === 0) {
 		recentMessages = [];
+		return;
+	}
+
+	// Загружаем последние сообщения через HTTP
+	try {
+		loadingMessages = true;
+		recentMessages = await getStreamMessages(selectedEventTypes, 10);
+	} catch (e) {
+		console.error("Failed to load messages:", e);
+		recentMessages = [];
+	} finally {
 		loadingMessages = false;
 	}
 
-	async function toggleEventType(eventType: string) {
-		if (selectedEventTypes.includes(eventType)) {
-			selectedEventTypes = selectedEventTypes.filter((et) => et !== eventType);
-		} else {
-			selectedEventTypes = [...selectedEventTypes, eventType];
-		}
+	// Подключаемся к WebSocket для получения новых сообщений в реальном времени
+	connectWebSocket();
+}
+
+function connectWebSocket() {
+	const API_URL =
+		import.meta.env.VITE_API_URL ?? "http://localhost:8080/api/v1";
+
+	// Определяем WebSocket URL
+	let wsUrl: string;
+	if (API_URL.startsWith("http://")) {
+		wsUrl = API_URL.replace("http://", "ws://");
+	} else if (API_URL.startsWith("https://")) {
+		wsUrl = API_URL.replace("https://", "wss://");
+	} else {
+		// Если относительный URL, используем текущий протокол
+		const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+		wsUrl = `${protocol}//${window.location.host}${API_URL}`;
+	}
+
+	// Добавляем event types в query параметры
+	const eventTypesParam = encodeURIComponent(
+		JSON.stringify(selectedEventTypes),
+	);
+	const fullWsUrl = `${wsUrl}/stream/ws?eventTypes=${eventTypesParam}`;
+
+	try {
+		wsConnection = new WebSocket(fullWsUrl);
+
+		wsConnection.onmessage = (event) => {
+			try {
+				const message = JSON.parse(event.data);
+				// Проверяем, соответствует ли сообщение выбранным event types
+				if (
+					selectedEventTypes.length === 0 ||
+					selectedEventTypes.includes(message.event_type)
+				) {
+					// Добавляем новое сообщение в начало списка
+					recentMessages = [message, ...recentMessages].slice(0, 10);
+				}
+			} catch (e) {
+				console.error("Failed to parse WebSocket message:", e);
+			}
+		};
+
+		wsConnection.onerror = (error) => {
+			console.error("WebSocket error:", error);
+		};
+
+		wsConnection.onclose = () => {
+			wsConnection = null;
+		};
+	} catch (e) {
+		console.error("Failed to connect WebSocket:", e);
+	}
+}
+
+function closeEventTypesEdit() {
+	// Закрываем WebSocket соединение
+	if (wsConnection) {
+		wsConnection.close();
+		wsConnection = null;
+	}
+
+	eventTypesModalOpen = false;
+	editingStreamBrokerNodeId = null;
+	selectedEventTypes = [];
+	newEventType = "";
+	recentMessages = [];
+	loadingMessages = false;
+}
+
+async function toggleEventType(eventType: string) {
+	if (selectedEventTypes.includes(eventType)) {
+		selectedEventTypes = selectedEventTypes.filter((et) => et !== eventType);
+	} else {
+		selectedEventTypes = [...selectedEventTypes, eventType];
+	}
+	// Переподключаем WebSocket с новыми фильтрами
+	if (wsConnection) {
+		wsConnection.close();
+		wsConnection = null;
+	}
+	await loadRecentMessages();
+}
+
+async function addNewEventType() {
+	if (
+		newEventType.trim() &&
+		!selectedEventTypes.includes(newEventType.trim())
+	) {
+		selectedEventTypes = [...selectedEventTypes, newEventType.trim()];
+		newEventType = "";
 		// Переподключаем WebSocket с новыми фильтрами
 		if (wsConnection) {
 			wsConnection.close();
@@ -872,507 +939,505 @@
 		}
 		await loadRecentMessages();
 	}
+}
 
-	async function addNewEventType() {
-		if (newEventType.trim() && !selectedEventTypes.includes(newEventType.trim())) {
-			selectedEventTypes = [...selectedEventTypes, newEventType.trim()];
-			newEventType = '';
-			// Переподключаем WebSocket с новыми фильтрами
-			if (wsConnection) {
-				wsConnection.close();
-				wsConnection = null;
-			}
-			await loadRecentMessages();
+function saveEventTypes() {
+	if (!editingStreamBrokerNodeId) return;
+
+	nodes = nodes.map((node) => {
+		if (node.id === editingStreamBrokerNodeId) {
+			return {
+				...node,
+				eventTypes: [...selectedEventTypes],
+				description:
+					selectedEventTypes.length > 0
+						? `Event types: ${selectedEventTypes.join(", ")}`
+						: "Stream broker",
+			};
 		}
+		return node;
+	});
+
+	closeEventTypesEdit();
+}
+
+function saveTriggerPayload() {
+	if (!editingTriggerNodeId) return;
+
+	const parsed = parseJsonStrict(triggerPayloadJson);
+	if (!parsed.ok) {
+		triggerPayloadParseError = parsed.error;
+		return;
 	}
 
-	function saveEventTypes() {
-		if (!editingStreamBrokerNodeId) return;
+	const payload = parsed.value as Record<string, unknown>;
+	nodes = nodes.map((node) => {
+		if (node.id === editingTriggerNodeId) {
+			return {
+				...node,
+				triggerPayload: payload,
+			};
+		}
+		return node;
+	});
 
-		nodes = nodes.map((node) => {
-			if (node.id === editingStreamBrokerNodeId) {
-				return {
-					...node,
-					eventTypes: [...selectedEventTypes],
-					description:
-						selectedEventTypes.length > 0
-							? `Event types: ${selectedEventTypes.join(', ')}`
-							: 'Stream broker',
-				};
-			}
-			return node;
+	closeTriggerPayloadEdit();
+}
+
+async function runManualTrigger(nodeId: string) {
+	const node = nodes.find((n) => n.id === nodeId);
+	if (!node || node.triggerPayload === undefined) return;
+	if (!workflowId) {
+		error = "errors.saveWorkflowFirst";
+		return;
+	}
+	const templateNode = nodes.find((n) => n.variant === "template");
+	if (!templateNode) {
+		error = "errors.addTemplateToGraph";
+		return;
+	}
+	const payload = node.triggerPayload || {};
+	const variables: Record<string, string> = {};
+	for (const [k, v] of Object.entries(payload)) {
+		variables[k] = v == null ? "" : String(v);
+	}
+	playingManualNodeId = nodeId;
+	error = null;
+	try {
+		await dispatchNotification({
+			workflowId,
+			templateId: templateNode.id,
+			variables,
+			payload: payload as Record<string, unknown>,
 		});
-
-		closeEventTypesEdit();
+	} catch (e) {
+		error = e instanceof Error ? e.message : "errors.runFailed";
+	} finally {
+		playingManualNodeId = null;
 	}
+}
 
-	function saveTriggerPayload() {
-		if (!editingTriggerNodeId) return;
-
-		const parsed = parseJsonStrict(triggerPayloadJson);
-		if (!parsed.ok) {
-			triggerPayloadParseError = parsed.error;
-			return;
-		}
-
-		const payload = parsed.value as Record<string, any>;
-		nodes = nodes.map((node) => {
-			if (node.id === editingTriggerNodeId) {
-				return {
-					...node,
-					triggerPayload: payload,
-				};
-			}
-			return node;
-		});
-
-		closeTriggerPayloadEdit();
-	}
-
-	async function runManualTrigger(nodeId: string) {
-		const node = nodes.find((n) => n.id === nodeId);
-		if (!node || node.triggerPayload === undefined) return;
-		if (!workflowId) {
-			error = 'errors.saveWorkflowFirst';
-			return;
-		}
-		const templateNode = nodes.find((n) => n.variant === 'template');
-		if (!templateNode) {
-			error = 'errors.addTemplateToGraph';
-			return;
-		}
-		const payload = node.triggerPayload || {};
-		const variables: Record<string, string> = {};
-		for (const [k, v] of Object.entries(payload)) {
-			variables[k] = v == null ? '' : String(v);
-		}
-		playingManualNodeId = nodeId;
-		error = null;
-		try {
-			await dispatchNotification({
-				workflowId,
-				templateId: templateNode.id,
-				variables,
-				payload: payload as Record<string, unknown>,
-			});
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'errors.runFailed';
-		} finally {
-			playingManualNodeId = null;
-		}
-	}
-
-	// Реактивно обновляем triggerPayload при изменении triggerPayloadJson
-	$: {
-		try {
-			if (triggerPayloadJson && triggerPayloadJson.trim()) {
-				triggerPayload = JSON.parse(triggerPayloadJson);
-			} else {
-				triggerPayload = {};
-			}
-		} catch (e) {
-			// Игнорируем ошибки парсинга во время ввода
+// Реактивно обновляем triggerPayload при изменении triggerPayloadJson
+$: {
+	try {
+		if (triggerPayloadJson && triggerPayloadJson.trim()) {
+			triggerPayload = JSON.parse(triggerPayloadJson);
+		} else {
 			triggerPayload = {};
 		}
+	} catch (e) {
+		// Игнорируем ошибки парсинга во время ввода
+		triggerPayload = {};
+	}
+}
+
+function toggleNodeMenu(nodeId: string, event: MouseEvent) {
+	event.stopPropagation();
+	nodeMenuOpenId = nodeMenuOpenId === nodeId ? null : nodeId;
+}
+
+function closeNodeMenu() {
+	nodeMenuOpenId = null;
+}
+
+function duplicateNode(nodeId: string) {
+	const source = nodes.find((n) => n.id === nodeId);
+	if (!source) return;
+
+	const duplicate: CanvasNode = {
+		...source,
+		id: generateNodeId(source.variant),
+		position: {
+			x: source.position.x + 48,
+			y: source.position.y + 48,
+		},
+		...(source.templatePayload
+			? { templatePayload: structuredClone(source.templatePayload) }
+			: {}),
+		...(source.triggerPayload
+			? { triggerPayload: structuredClone(source.triggerPayload) }
+			: {}),
+		...(source.eventTypes ? { eventTypes: [...source.eventTypes] } : {}),
+	};
+
+	nodes = [...nodes, duplicate];
+	closeNodeMenu();
+}
+
+function deleteNode(nodeId: string, event?: MouseEvent) {
+	event?.stopPropagation();
+
+	// Удалить узел
+	nodes = nodes.filter((n) => n.id !== nodeId);
+
+	// Удалить все связанные линии (edges)
+	edges = edges.filter(
+		(e) => e.from.nodeId !== nodeId && e.to.nodeId !== nodeId,
+	);
+
+	// Если удаляемый узел был в процессе соединения, отменить соединение
+	if (connecting?.nodeId === nodeId) {
+		connecting = null;
 	}
 
-	function toggleNodeMenu(nodeId: string, event: MouseEvent) {
-		event.stopPropagation();
-		nodeMenuOpenId = nodeMenuOpenId === nodeId ? null : nodeId;
-	}
-
-	function closeNodeMenu() {
-		nodeMenuOpenId = null;
-	}
-
-	function duplicateNode(nodeId: string) {
-		const source = nodes.find((n) => n.id === nodeId);
-		if (!source) return;
-
-		const duplicate: CanvasNode = {
-			...source,
-			id: generateNodeId(source.variant),
-			position: {
-				x: source.position.x + 48,
-				y: source.position.y + 48,
-			},
-			...(source.templatePayload
-				? { templatePayload: structuredClone(source.templatePayload) }
-				: {}),
-			...(source.triggerPayload
-				? { triggerPayload: structuredClone(source.triggerPayload) }
-				: {}),
-			...(source.eventTypes ? { eventTypes: [...source.eventTypes] } : {}),
-		};
-
-		nodes = [...nodes, duplicate];
+	if (nodeMenuOpenId === nodeId) {
 		closeNodeMenu();
 	}
+}
 
-	function deleteNode(nodeId: string, event?: MouseEvent) {
-		event?.stopPropagation();
+function deleteEdge(edgeId: string, event?: MouseEvent | KeyboardEvent) {
+	event?.stopPropagation();
+	edges = edges.filter((e) => e.id !== edgeId);
+}
 
-		// Удалить узел
-		nodes = nodes.filter((n) => n.id !== nodeId);
-
-		// Удалить все связанные линии (edges)
-		edges = edges.filter((e) => e.from.nodeId !== nodeId && e.to.nodeId !== nodeId);
-
-		// Если удаляемый узел был в процессе соединения, отменить соединение
-		if (connecting?.nodeId === nodeId) {
-			connecting = null;
-		}
-
-		if (nodeMenuOpenId === nodeId) {
-			closeNodeMenu();
-		}
+function getMidpoint(pathString: string): { x: number; y: number } | null {
+	// Парсим SVG path и находим точку на 50% длины
+	try {
+		const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+		path.setAttribute("d", pathString);
+		const length = path.getTotalLength();
+		const midpoint = path.getPointAtLength(length / 2);
+		return { x: midpoint.x, y: midpoint.y };
+	} catch {
+		return null;
 	}
+}
 
-	function deleteEdge(edgeId: string, event?: MouseEvent | KeyboardEvent) {
-		event?.stopPropagation();
-		edges = edges.filter((e) => e.id !== edgeId);
-	}
+let hoveredEdgeId: string | null = null;
 
-	function getMidpoint(pathString: string): { x: number; y: number } | null {
-		// Парсим SVG path и находим точку на 50% длины
-		try {
-			const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-			path.setAttribute('d', pathString);
-			const length = path.getTotalLength();
-			const midpoint = path.getPointAtLength(length / 2);
-			return { x: midpoint.x, y: midpoint.y };
-		} catch {
-			return null;
-		}
-	}
-
-	let hoveredEdgeId: string | null = null;
-
-	function handleWorkspaceMouseMove(event: MouseEvent) {
-		if (connecting && workspaceCanvasScaleElement) {
-			const rect = workspaceCanvasScaleElement.getBoundingClientRect();
-			const z = workspaceZoom || 1;
-			mousePosition = {
-				x: (event.clientX - rect.left) / z,
-				y: (event.clientY - rect.top) / z,
-			};
-		}
-	}
-
-	// Реактивное вычисление путей для линий
-	// Зависит от nodes и edges, чтобы обновляться при перемещении блоков
-	// Также зависит от размеров окна для корректной работы при изменении viewport
-	let windowResizeTrigger = 0;
-
-	if (typeof window !== 'undefined') {
-		const handleResize = () => {
-			windowResizeTrigger++;
+function handleWorkspaceMouseMove(event: MouseEvent) {
+	if (connecting && workspaceCanvasScaleElement) {
+		const rect = workspaceCanvasScaleElement.getBoundingClientRect();
+		const z = workspaceZoom || 1;
+		mousePosition = {
+			x: (event.clientX - rect.left) / z,
+			y: (event.clientY - rect.top) / z,
 		};
-		window.addEventListener('resize', handleResize);
-		// Cleanup будет выполнен при unmount компонента
 	}
+}
 
-	$: edgePaths = (() => {
-		// Явно используем nodes, edges, windowResizeTrigger и workspaceZoom для реактивности
-		const _ = nodes.length + edges.length + windowResizeTrigger + workspaceZoom;
-		return edges
-			.map((edge) => {
-				const fromPos = getConnectorPosition(edge.from.nodeId, edge.from.port);
-				const toPos = getConnectorPosition(edge.to.nodeId, edge.to.port);
-				if (!fromPos || !toPos) return null;
+// Реактивное вычисление путей для линий
+// Зависит от nodes и edges, чтобы обновляться при перемещении блоков
+// Также зависит от размеров окна для корректной работы при изменении viewport
+let windowResizeTrigger = 0;
 
-				const dx = toPos.x - fromPos.x;
-				const controlX1 = fromPos.x + Math.abs(dx) * 0.5;
-				const controlX2 = toPos.x - Math.abs(dx) * 0.5;
+if (typeof window !== "undefined") {
+	const handleResize = () => {
+		windowResizeTrigger++;
+	};
+	window.addEventListener("resize", handleResize);
+	// Cleanup будет выполнен при unmount компонента
+}
 
-				return {
-					id: edge.id,
-					path: `M ${fromPos.x} ${fromPos.y} C ${controlX1} ${fromPos.y}, ${controlX2} ${toPos.y}, ${toPos.x} ${toPos.y}`,
-				};
-			})
-			.filter((p): p is { id: string; path: string } => p !== null);
-	})();
+$: edgePaths = (() => {
+	// Явно используем nodes, edges, windowResizeTrigger и workspaceZoom для реактивности
+	const _ = nodes.length + edges.length + windowResizeTrigger + workspaceZoom;
+	return edges
+		.map((edge) => {
+			const fromPos = getConnectorPosition(edge.from.nodeId, edge.from.port);
+			const toPos = getConnectorPosition(edge.to.nodeId, edge.to.port);
+			if (!fromPos || !toPos) return null;
 
-	// Путь для активного соединения (следует за курсором)
-	// Зависит от nodes, connecting и mousePosition
-	$: tempPath = (() => {
-		void workspaceZoom;
-		void windowResizeTrigger;
-		if (!connecting) return null;
+			const dx = toPos.x - fromPos.x;
+			const controlX1 = fromPos.x + Math.abs(dx) * 0.5;
+			const controlX2 = toPos.x - Math.abs(dx) * 0.5;
 
-		const fromPos = getConnectorPosition(connecting.nodeId, connecting.port);
-		if (!fromPos) return null;
-
-		const targetX = mousePosition?.x ?? fromPos.x + 200;
-		const targetY = mousePosition?.y ?? fromPos.y;
-
-		const dx = targetX - fromPos.x;
-		const controlX1 = fromPos.x + Math.abs(dx) * 0.5;
-		const controlX2 = targetX - Math.abs(dx) * 0.5;
-
-		return `M ${fromPos.x} ${fromPos.y} C ${controlX1} ${fromPos.y}, ${controlX2} ${targetY}, ${targetX} ${targetY}`;
-	})();
-
-	function toggleEditName() {
-		editingName = !editingName;
-	}
-
-	function saveName() {
-		if (!workflowName.trim()) {
-			workflowName = get(t)('workflows.newWorkflow');
-		}
-		editingName = false;
-	}
-
-	async function applyWorkflowFromAPI(workflow: WorkflowDraft) {
-		workflowName = workflow.name || get(t)('workflows.newWorkflow');
-		workflowDescription = workflow.description ?? '';
-		isActive = workflow.isActive || false;
-
-		nodes = (workflow.nodes || []).map((node) => {
-			const config = node.config as Record<string, unknown>;
-			const variant = (config?.variant || node.type) as NodeVariant;
 			return {
-				id: node.id,
-				label: (config?.label as string) || node.id,
-				description: (config?.description as string) || '',
-				variant: variant,
-				position: node.position || { x: 0, y: 0 },
-				...(variant === 'channel' && config?.channelId
-					? {
-							selectedChannelId: config.channelId as string,
-							selectedChannelName: (config.channelName as string) || (config.channelId as string),
-							selectedChannelConnectorId: config.connectorId as string,
-							selectedChannelConnectorType:
-								(config.connectorType as CanvasNode['selectedChannelConnectorType']) ||
-								(config.channelId === config.connectorId ? 'smtp' : 'telegram'),
-						}
-					: {}),
-				...(variant === 'template' && (config?.templateBody || config?.templatePayload)
-					? {
-							templateBody: (config.templateBody as string) || '',
-							templatePayload: (config.templatePayload as Record<string, unknown>) || {},
-						}
-					: {}),
-				...(variant === 'storage'
-					? {
-							storageMode: (config?.storageMode as StorageMode) || 'raw',
-						}
-					: {}),
-				...(variant === 'trigger' && config?.triggerPayload
-					? {
-							triggerPayload: (config.triggerPayload as Record<string, unknown>) || {},
-						}
-					: {}),
-				...(variant === 'trigger' && config?.eventTypes
-					? {
-							eventTypes: (config.eventTypes as string[]) || [],
-						}
-					: {}),
+				id: edge.id,
+				path: `M ${fromPos.x} ${fromPos.y} C ${controlX1} ${fromPos.y}, ${controlX2} ${toPos.y}, ${toPos.x} ${toPos.y}`,
 			};
-		});
+		})
+		.filter((p): p is { id: string; path: string } => p !== null);
+})();
 
-		await tick();
-		await new Promise((resolve) => setTimeout(resolve, 100));
+// Путь для активного соединения (следует за курсором)
+// Зависит от nodes, connecting и mousePosition
+$: tempPath = (() => {
+	void workspaceZoom;
+	void windowResizeTrigger;
+	if (!connecting) return null;
 
-		edges = (workflow.edges || []).map((edge, index) => ({
-			id: `${edge.from}-${edge.to}-${index}`,
-			from: { nodeId: edge.from, port: 'right' as PortType },
-			to: { nodeId: edge.to, port: 'left' as PortType },
-		}));
+	const fromPos = getConnectorPosition(connecting.nodeId, connecting.port);
+	if (!fromPos) return null;
 
-		edges = [...edges];
-		nodes = [...nodes];
+	const targetX = mousePosition?.x ?? fromPos.x + 200;
+	const targetY = mousePosition?.y ?? fromPos.y;
 
-		if (typeof workflow.canvasZoom === 'number' && Number.isFinite(workflow.canvasZoom)) {
-			workspaceZoom = clampWorkspaceZoom(workflow.canvasZoom);
-			bumpWorkspaceLayout();
-		}
+	const dx = targetX - fromPos.x;
+	const controlX1 = fromPos.x + Math.abs(dx) * 0.5;
+	const controlX2 = targetX - Math.abs(dx) * 0.5;
+
+	return `M ${fromPos.x} ${fromPos.y} C ${controlX1} ${fromPos.y}, ${controlX2} ${targetY}, ${targetX} ${targetY}`;
+})();
+
+function toggleEditName() {
+	editingName = !editingName;
+}
+
+function saveName() {
+	if (!workflowName.trim()) {
+		workflowName = get(t)("workflows.newWorkflow");
 	}
+	editingName = false;
+}
 
-	function formatVersionDate(iso: string): string {
-		try {
-			return new Date(iso).toLocaleString(get(locale));
-		} catch {
-			return iso;
-		}
-	}
+async function applyWorkflowFromAPI(workflow: WorkflowDraft) {
+	workflowName = workflow.name || get(t)("workflows.newWorkflow");
+	workflowDescription = workflow.description ?? "";
+	isActive = workflow.isActive || false;
 
-	async function openHistoryPanel() {
-		if (!workflowId) return;
-		historyPanelOpen = true;
-		selectedVersionId = null;
-		previewVersion = null;
-		await loadVersionList();
-	}
-
-	function closeHistoryPanel() {
-		historyPanelOpen = false;
-		selectedVersionId = null;
-		previewVersion = null;
-	}
-
-	async function loadVersionList() {
-		if (!workflowId) return;
-		versionsLoading = true;
-		try {
-			versions = await listWorkflowVersions(workflowId);
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'errors.loadWorkflowVersions';
-		} finally {
-			versionsLoading = false;
-		}
-	}
-
-	async function selectVersionForPreview(versionId: string) {
-		if (!workflowId) return;
-		selectedVersionId = versionId;
-		previewLoading = true;
-		previewVersion = null;
-		try {
-			previewVersion = await getWorkflowVersion(workflowId, versionId);
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'errors.loadWorkflowVersion';
-		} finally {
-			previewLoading = false;
-		}
-	}
-
-	async function handleRestoreVersion(version: WorkflowVersionMeta) {
-		if (!workflowId || restoringVersion) return;
-
-		const confirmKey = isActive
-			? 'workflowHistory.confirmRestoreActive'
-			: 'workflowHistory.confirmRestore';
-		if (!confirm(get(t)(confirmKey, { number: version.versionNumber }))) {
-			return;
-		}
-
-		restoringVersion = true;
-		error = null;
-		try {
-			const restored = await restoreWorkflowVersion(workflowId, version.id);
-			await applyWorkflowFromAPI(restored);
-			closeHistoryPanel();
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'errors.restoreWorkflowVersion';
-		} finally {
-			restoringVersion = false;
-		}
-	}
-
-	onMount(async () => {
-		const id = $page.url.searchParams.get('id');
-		if (!id) {
-			workflowName = get(t)('workflows.newWorkflow');
-		}
-		if (id) {
-			workflowId = id;
-			try {
-				loading = true;
-				error = null;
-				const workflow = await getWorkflow(id);
-				await applyWorkflowFromAPI(workflow);
-			} catch (e) {
-				error = e instanceof Error ? e.message : 'errors.loadWorkflow';
-			} finally {
-				loading = false;
-			}
-		}
+	nodes = (workflow.nodes || []).map((node) => {
+		const config = node.config as Record<string, unknown>;
+		const variant = (config?.variant || node.type) as NodeVariant;
+		return {
+			id: node.id,
+			label: (config?.label as string) || node.id,
+			description: (config?.description as string) || "",
+			variant: variant,
+			position: node.position || { x: 0, y: 0 },
+			...(variant === "channel" && config?.channelId
+				? {
+						selectedChannelId: config.channelId as string,
+						selectedChannelName:
+							(config.channelName as string) || (config.channelId as string),
+						selectedChannelConnectorId: config.connectorId as string,
+						selectedChannelConnectorType:
+							(config.connectorType as CanvasNode["selectedChannelConnectorType"]) ||
+							(config.channelId === config.connectorId ? "smtp" : "telegram"),
+					}
+				: {}),
+			...(variant === "template" &&
+			(config?.templateBody || config?.templatePayload)
+				? {
+						templateBody: (config.templateBody as string) || "",
+						templatePayload:
+							(config.templatePayload as Record<string, unknown>) || {},
+					}
+				: {}),
+			...(variant === "storage"
+				? {
+						storageMode: (config?.storageMode as StorageMode) || "raw",
+					}
+				: {}),
+			...(variant === "trigger" && config?.triggerPayload
+				? {
+						triggerPayload:
+							(config.triggerPayload as Record<string, unknown>) || {},
+					}
+				: {}),
+			...(variant === "trigger" && config?.eventTypes
+				? {
+						eventTypes: (config.eventTypes as string[]) || [],
+					}
+				: {}),
+		};
 	});
 
-	async function saveWorkflowToAPI() {
-		if (saving) return;
+	await tick();
+	await new Promise((resolve) => setTimeout(resolve, 100));
 
+	edges = (workflow.edges || []).map((edge, index) => ({
+		id: `${edge.from}-${edge.to}-${index}`,
+		from: { nodeId: edge.from, port: "right" as PortType },
+		to: { nodeId: edge.to, port: "left" as PortType },
+	}));
+
+	edges = [...edges];
+	nodes = [...nodes];
+
+	if (
+		typeof workflow.canvasZoom === "number" &&
+		Number.isFinite(workflow.canvasZoom)
+	) {
+		workspaceZoom = clampWorkspaceZoom(workflow.canvasZoom);
+		bumpWorkspaceLayout();
+	}
+}
+
+function formatVersionDate(iso: string): string {
+	try {
+		return new Date(iso).toLocaleString(get(locale));
+	} catch {
+		return iso;
+	}
+}
+
+async function openHistoryPanel() {
+	if (!workflowId) return;
+	historyPanelOpen = true;
+	selectedVersionId = null;
+	previewVersion = null;
+	await loadVersionList();
+}
+
+function closeHistoryPanel() {
+	historyPanelOpen = false;
+	selectedVersionId = null;
+	previewVersion = null;
+}
+
+async function loadVersionList() {
+	if (!workflowId) return;
+	versionsLoading = true;
+	try {
+		versions = await listWorkflowVersions(workflowId);
+	} catch (e) {
+		error = e instanceof Error ? e.message : "errors.loadWorkflowVersions";
+	} finally {
+		versionsLoading = false;
+	}
+}
+
+async function selectVersionForPreview(versionId: string) {
+	if (!workflowId) return;
+	selectedVersionId = versionId;
+	previewLoading = true;
+	previewVersion = null;
+	try {
+		previewVersion = await getWorkflowVersion(workflowId, versionId);
+	} catch (e) {
+		error = e instanceof Error ? e.message : "errors.loadWorkflowVersion";
+	} finally {
+		previewLoading = false;
+	}
+}
+
+async function handleRestoreVersion(version: WorkflowVersionMeta) {
+	if (!workflowId || restoringVersion) return;
+
+	const confirmKey = isActive
+		? "workflowHistory.confirmRestoreActive"
+		: "workflowHistory.confirmRestore";
+	if (!confirm(get(t)(confirmKey, { number: version.versionNumber }))) {
+		return;
+	}
+
+	restoringVersion = true;
+	error = null;
+	try {
+		const restored = await restoreWorkflowVersion(workflowId, version.id);
+		await applyWorkflowFromAPI(restored);
+		closeHistoryPanel();
+	} catch (e) {
+		error = e instanceof Error ? e.message : "errors.restoreWorkflowVersion";
+	} finally {
+		restoringVersion = false;
+	}
+}
+
+onMount(async () => {
+	const id = $page.url.searchParams.get("id");
+	if (!id) {
+		workflowName = get(t)("workflows.newWorkflow");
+	}
+	if (id) {
+		workflowId = id;
 		try {
-			saving = true;
+			loading = true;
 			error = null;
-
-			// Преобразуем edges, убеждаясь что они валидны
-			const edgesData = edges
-				.filter((edge) => edge.from?.nodeId && edge.to?.nodeId)
-				.map((edge) => ({
-					from: edge.from.nodeId,
-					to: edge.to.nodeId,
-				}));
-
-			const workflowData = {
-				id: workflowId || crypto.randomUUID(),
-				name: workflowName.trim() || get(t)('workflows.newWorkflow'),
-				description: workflowDescription.trim(),
-				nodes: nodes.map((node) => ({
-					id: node.id,
-					type: node.variant === 'trigger' ? 'trigger' : 'action',
-					position: {
-						x: node.position.x,
-						y: node.position.y,
-					},
-					config: {
-						label: node.label,
-						description: node.description,
-						variant: node.variant,
-						...(node.variant === 'channel' && node.selectedChannelId
-							? {
-									channelId: node.selectedChannelId,
-									channelName: node.selectedChannelName,
-									connectorId: node.selectedChannelConnectorId,
-									connectorType: node.selectedChannelConnectorType,
-								}
-							: {}),
-						...(node.variant === 'template' && (node.templateBody || node.templatePayload)
-							? {
-									templateBody: node.templateBody,
-									templatePayload: node.templatePayload,
-								}
-							: {}),
-						...(node.variant === 'trigger' && node.triggerPayload
-							? {
-									triggerPayload: node.triggerPayload,
-								}
-							: {}),
-						...(node.variant === 'trigger' && node.eventTypes
-							? {
-									eventTypes: node.eventTypes,
-								}
-							: {}),
-						...(node.variant === 'storage'
-							? {
-									storageMode: node.storageMode || 'raw',
-								}
-							: {}),
-					},
-				})),
-				edges: edgesData,
-				filters: {},
-				isActive: isActive,
-				canvasZoom: clampWorkspaceZoom(workspaceZoom),
-			};
-
-			await saveWorkflow(workflowData);
-			// Обновляем workflowId после сохранения
-			if (!workflowId) {
-				const saved = await getWorkflow(workflowData.id);
-				workflowId = saved.id;
-			}
-			if (historyPanelOpen) {
-				await loadVersionList();
-			}
+			const workflow = await getWorkflow(id);
+			await applyWorkflowFromAPI(workflow);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'errors.saveWorkflow';
+			error = e instanceof Error ? e.message : "errors.loadWorkflow";
 		} finally {
-			saving = false;
+			loading = false;
 		}
 	}
+});
 
-	$: if (typeof document !== 'undefined') {
-		document.body.style.overflow = workspaceExpanded ? 'hidden' : '';
-	}
+async function saveWorkflowToAPI() {
+	if (saving) return;
 
-	onDestroy(() => {
-		if (typeof document !== 'undefined') {
-			document.body.style.overflow = '';
+	try {
+		saving = true;
+		error = null;
+
+		// Преобразуем edges, убеждаясь что они валидны
+		const edgesData = edges
+			.filter((edge) => edge.from?.nodeId && edge.to?.nodeId)
+			.map((edge) => ({
+				from: edge.from.nodeId,
+				to: edge.to.nodeId,
+			}));
+
+		const workflowData = {
+			id: workflowId || crypto.randomUUID(),
+			name: workflowName.trim() || get(t)("workflows.newWorkflow"),
+			description: workflowDescription.trim(),
+			nodes: nodes.map((node) => ({
+				id: node.id,
+				type: node.variant === "trigger" ? "trigger" : "action",
+				position: {
+					x: node.position.x,
+					y: node.position.y,
+				},
+				config: {
+					label: node.label,
+					description: node.description,
+					variant: node.variant,
+					...(node.variant === "channel" && node.selectedChannelId
+						? {
+								channelId: node.selectedChannelId,
+								channelName: node.selectedChannelName,
+								connectorId: node.selectedChannelConnectorId,
+								connectorType: node.selectedChannelConnectorType,
+							}
+						: {}),
+					...(node.variant === "template" &&
+					(node.templateBody || node.templatePayload)
+						? {
+								templateBody: node.templateBody,
+								templatePayload: node.templatePayload,
+							}
+						: {}),
+					...(node.variant === "trigger" && node.triggerPayload
+						? {
+								triggerPayload: node.triggerPayload,
+							}
+						: {}),
+					...(node.variant === "trigger" && node.eventTypes
+						? {
+								eventTypes: node.eventTypes,
+							}
+						: {}),
+					...(node.variant === "storage"
+						? {
+								storageMode: node.storageMode || "raw",
+							}
+						: {}),
+				},
+			})),
+			edges: edgesData,
+			filters: {},
+			isActive: isActive,
+			canvasZoom: clampWorkspaceZoom(workspaceZoom),
+		};
+
+		await saveWorkflow(workflowData);
+		// Обновляем workflowId после сохранения
+		if (!workflowId) {
+			const saved = await getWorkflow(workflowData.id);
+			workflowId = saved.id;
 		}
-	});
+		if (historyPanelOpen) {
+			await loadVersionList();
+		}
+	} catch (e) {
+		error = e instanceof Error ? e.message : "errors.saveWorkflow";
+	} finally {
+		saving = false;
+	}
+}
+
+$: if (typeof document !== "undefined") {
+	document.body.style.overflow = workspaceExpanded ? "hidden" : "";
+}
+
+onDestroy(() => {
+	if (typeof document !== "undefined") {
+		document.body.style.overflow = "";
+	}
+});
 </script>
 
 <svelte:window on:keydown={handleGlobalKeydown} />

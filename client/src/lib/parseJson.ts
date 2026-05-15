@@ -35,14 +35,14 @@ export function parseJsonStrict(text: string): JsonParseResult {
 				const pos = Number.parseInt(posMatch[1], 10);
 				const before = text.slice(0, pos);
 				line = (before.match(/\n/g) || []).length + 1;
-				const lastNewline = before.lastIndexOf('\n');
+				const lastNewline = before.lastIndexOf("\n");
 				column = pos - lastNewline;
 			}
 		}
 
 		const cleanMessage = msg
-			.replace(/\s+at position \d+.*$/i, '')
-			.replace(/\s*\(line \d+ column \d+\)$/i, '')
+			.replace(/\s+at position \d+.*$/i, "")
+			.replace(/\s*\(line \d+ column \d+\)$/i, "")
 			.trim();
 
 		return {

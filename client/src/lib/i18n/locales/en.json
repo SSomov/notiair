@@ -75,7 +75,6 @@
 		"triggerPayloadNotFound": "No trigger with payload found",
 		"smtpPortRange": "Enter a port between 1 and 65535",
 		"saveSmtpAccount": "Could not save account",
-		"deleteSmtpAccount": "Could not delete account",
 		"toggleSmtpStatus": "Could not change status",
 		"loadStorageRecords": "Could not load storage records",
 		"loadStorageRecord": "Could not load storage record",

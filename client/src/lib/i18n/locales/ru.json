@@ -75,7 +75,6 @@
 		"triggerPayloadNotFound": "Не найден триггер с payload",
 		"smtpPortRange": "Укажите порт от 1 до 65535",
 		"saveSmtpAccount": "Не удалось сохранить аккаунт",
-		"deleteSmtpAccount": "Не удалось удалить аккаунт",
 		"toggleSmtpStatus": "Не удалось изменить статус",
 		"loadStorageRecords": "Не удалось загрузить записи хранилища",
 		"loadStorageRecord": "Не удалось загрузить запись",

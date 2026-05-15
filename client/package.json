@@ -8,6 +8,7 @@
 		"build": "bun run vite build",
 		"preview": "bun run build && bun ./build/index.js",
 		"lint": "bunx @biomejs/biome check .",
+		"lint:fix": "bunx @biomejs/biome check --write .",
 		"format": "bunx @biomejs/biome format --write .",
 		"type-check": "bunx tsc --noEmit"
 	},

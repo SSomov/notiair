@@ -1,165 +1,165 @@
 <script lang="ts">
-	import { onMount } from "svelte";
-	import { page } from "$app/stores";
-	import { resolve } from "$app/paths";
-	import { getLocaleFromPath, addLocaleToPath } from "$lib/i18n/utils";
-	import { get } from "svelte/store";
-	import { locale, t } from "$lib/i18n";
-	import { resolveI18nError } from "$lib/i18n/resolveError";
-	import {
-		listSmtpAccounts,
-		createSmtpAccount,
-		updateSmtpAccount,
-		deleteSmtpAccount,
-		toggleSmtpAccountActive,
-		type SmtpAccount,
-	} from "$lib/api";
+import { onMount } from "svelte";
+import { get } from "svelte/store";
+import { resolve } from "$app/paths";
+import { page } from "$app/stores";
+import {
+	createSmtpAccount,
+	deleteSmtpAccount,
+	listSmtpAccounts,
+	type SmtpAccount,
+	toggleSmtpAccountActive,
+	updateSmtpAccount,
+} from "$lib/api";
+import { locale, t } from "$lib/i18n";
+import { resolveI18nError } from "$lib/i18n/resolveError";
+import { addLocaleToPath, getLocaleFromPath } from "$lib/i18n/utils";
 
-	let accounts: SmtpAccount[] = [];
-	let loading = true;
-	let error: string | null = null;
-	let errorDisplay: string | null = null;
+let accounts: SmtpAccount[] = [];
+let loading = true;
+let error: string | null = null;
+let errorDisplay: string | null = null;
 
-	let modalOpen = false;
-	let editing: SmtpAccount | null = null;
-	let nameInput = "";
-	let hostInput = "";
-	let portInput = 587;
-	let usernameInput = "";
-	let passwordInput = "";
-	let fromInput = "";
-	let commentInput = "";
-	let useTlsInput = false;
-	let useStartTlsInput = true;
+let modalOpen = false;
+let editing: SmtpAccount | null = null;
+let nameInput = "";
+let hostInput = "";
+let portInput = 587;
+let usernameInput = "";
+let passwordInput = "";
+let fromInput = "";
+let commentInput = "";
+let useTlsInput = false;
+let useStartTlsInput = true;
 
-	$: loc = getLocaleFromPath($page.url.pathname);
-	$: hrefConnectors = resolve(addLocaleToPath("/connectors", loc));
-	let saving = false;
+$: loc = getLocaleFromPath($page.url.pathname);
+$: hrefConnectors = resolve(addLocaleToPath("/connectors", loc));
+let saving = false;
 
-	function maskSecret(secret: string): string {
-		if (!secret || secret.length <= 8) return "••••••••";
-		const start = secret.substring(0, 2);
-		const end = secret.substring(secret.length - 2);
-		const masked = "•".repeat(Math.min(12, secret.length - 4));
-		return `${start}${masked}${end}`;
-	}
+function maskSecret(secret: string): string {
+	if (!secret || secret.length <= 8) return "••••••••";
+	const start = secret.substring(0, 2);
+	const end = secret.substring(secret.length - 2);
+	const masked = "•".repeat(Math.min(12, secret.length - 4));
+	return `${start}${masked}${end}`;
+}
 
-	onMount(async () => {
-		await loadAccounts();
-	});
+onMount(async () => {
+	await loadAccounts();
+});
 
-	async function loadAccounts() {
-		try {
-			loading = true;
-			error = null;
-			const data = await listSmtpAccounts();
-			accounts = Array.isArray(data) ? data : [];
-		} catch (e) {
-			error = e instanceof Error ? e.message : "errors.loadSmtpAccounts";
-			accounts = [];
-		} finally {
-			loading = false;
-		}
-	}
-
-	function openModal(acc?: SmtpAccount) {
-		editing = acc || null;
-		nameInput = acc?.name || "";
-		hostInput = acc?.host || "";
-		portInput = acc?.port || 587;
-		usernameInput = acc?.username || "";
-		passwordInput = acc?.password || "";
-		fromInput = acc?.from || "";
-		commentInput = acc?.comment || "";
-		useTlsInput = acc?.useTls ?? false;
-		useStartTlsInput = acc?.useStartTls ?? true;
-		modalOpen = true;
+async function loadAccounts() {
+	try {
+		loading = true;
 		error = null;
+		const data = await listSmtpAccounts();
+		accounts = Array.isArray(data) ? data : [];
+	} catch (e) {
+		error = e instanceof Error ? e.message : "errors.loadSmtpAccounts";
+		accounts = [];
+	} finally {
+		loading = false;
+	}
+}
+
+function openModal(acc?: SmtpAccount) {
+	editing = acc || null;
+	nameInput = acc?.name || "";
+	hostInput = acc?.host || "";
+	portInput = acc?.port || 587;
+	usernameInput = acc?.username || "";
+	passwordInput = acc?.password || "";
+	fromInput = acc?.from || "";
+	commentInput = acc?.comment || "";
+	useTlsInput = acc?.useTls ?? false;
+	useStartTlsInput = acc?.useStartTls ?? true;
+	modalOpen = true;
+	error = null;
+}
+
+function closeModal() {
+	modalOpen = false;
+	editing = null;
+	nameInput = "";
+	hostInput = "";
+	portInput = 587;
+	usernameInput = "";
+	passwordInput = "";
+	fromInput = "";
+	commentInput = "";
+	useTlsInput = false;
+	useStartTlsInput = true;
+	error = null;
+}
+
+async function handleSave() {
+	const host = hostInput.trim();
+	const name = nameInput.trim();
+	if (!host || !name || saving) return;
+	const port = Number(portInput);
+	if (!Number.isFinite(port) || port < 1 || port > 65535) {
+		error = "errors.smtpPortRange";
+		return;
 	}
 
-	function closeModal() {
-		modalOpen = false;
-		editing = null;
-		nameInput = "";
-		hostInput = "";
-		portInput = 587;
-		usernameInput = "";
-		passwordInput = "";
-		fromInput = "";
-		commentInput = "";
-		useTlsInput = false;
-		useStartTlsInput = true;
+	try {
+		saving = true;
 		error = null;
-	}
 
-	async function handleSave() {
-		const host = hostInput.trim();
-		const name = nameInput.trim();
-		if (!host || !name || saving) return;
-		const port = Number(portInput);
-		if (!Number.isFinite(port) || port < 1 || port > 65535) {
-			error = "errors.smtpPortRange";
-			return;
+		const payload = {
+			name,
+			host,
+			port,
+			username: usernameInput.trim(),
+			password: passwordInput,
+			from: fromInput.trim(),
+			comment: commentInput.trim(),
+			useTls: useTlsInput,
+			useStartTls: useStartTlsInput,
+		};
+
+		if (editing) {
+			const updated = await updateSmtpAccount(editing.id, payload);
+			accounts = accounts.map((a) => (a.id === editing.id ? updated : a));
+		} else {
+			const created = await createSmtpAccount(payload);
+			accounts = [...accounts, created];
 		}
 
-		try {
-			saving = true;
-			error = null;
-
-			const payload = {
-				name,
-				host,
-				port,
-				username: usernameInput.trim(),
-				password: passwordInput,
-				from: fromInput.trim(),
-				comment: commentInput.trim(),
-				useTls: useTlsInput,
-				useStartTls: useStartTlsInput,
-			};
-
-			if (editing) {
-				const updated = await updateSmtpAccount(editing.id, payload);
-				accounts = accounts.map((a) => (a.id === editing.id ? updated : a));
-			} else {
-				const created = await createSmtpAccount(payload);
-				accounts = [...accounts, created];
-			}
-
-			closeModal();
-		} catch (e) {
-			error = e instanceof Error ? e.message : "errors.saveSmtpAccount";
-		} finally {
-			saving = false;
-		}
+		closeModal();
+	} catch (e) {
+		error = e instanceof Error ? e.message : "errors.saveSmtpAccount";
+	} finally {
+		saving = false;
 	}
+}
 
-	async function handleDelete(id: string) {
-		if (!confirm(get(t)("smtpPage.confirmDelete"))) return;
+async function handleDelete(id: string) {
+	if (!confirm(get(t)("smtpPage.confirmDelete"))) return;
 
-		try {
-			error = null;
-			await deleteSmtpAccount(id);
-			accounts = accounts.filter((a) => a.id !== id);
-		} catch (e) {
-			error = e instanceof Error ? e.message : "errors.deleteSmtpAccount";
-		}
+	try {
+		error = null;
+		await deleteSmtpAccount(id);
+		accounts = accounts.filter((a) => a.id !== id);
+	} catch (e) {
+		error = e instanceof Error ? e.message : "errors.deleteSmtpAccount";
 	}
+}
 
-	async function handleToggleActive(acc: SmtpAccount) {
-		try {
-			error = null;
-			const updated = await toggleSmtpAccountActive(acc.id, !acc.isActive);
-			accounts = accounts.map((a) => (a.id === acc.id ? updated : a));
-		} catch (e) {
-			error = e instanceof Error ? e.message : "errors.toggleSmtpStatus";
-		}
+async function handleToggleActive(acc: SmtpAccount) {
+	try {
+		error = null;
+		const updated = await toggleSmtpAccountActive(acc.id, !acc.isActive);
+		accounts = accounts.map((a) => (a.id === acc.id ? updated : a));
+	} catch (e) {
+		error = e instanceof Error ? e.message : "errors.toggleSmtpStatus";
 	}
+}
 
-	$: {
-		$locale;
-		errorDisplay = error ? resolveI18nError(error) : null;
-	}
+$: {
+	$locale;
+	errorDisplay = error ? resolveI18nError(error) : null;
+}
 </script>
 
 <section class="space-y-8 px-4 pb-12 pt-2 md:px-12 md:pt-4">

@@ -1,49 +1,53 @@
 <script lang="ts">
-	import { onMount } from "svelte";
-	import { page } from "$app/stores";
-	import { resolve } from "$app/paths";
-	import { listTelegramTokens, listSmtpAccounts, type TelegramToken } from "$lib/api";
-	import { getLocaleFromPath, addLocaleToPath } from "$lib/i18n/utils";
-	import { t } from "$lib/i18n";
-	import TelegramIcon from "$lib/components/TelegramIcon.svelte";
+import { onMount } from "svelte";
+import { resolve } from "$app/paths";
+import { page } from "$app/stores";
+import {
+	listSmtpAccounts,
+	listTelegramTokens,
+	type TelegramToken,
+} from "$lib/api";
+import TelegramIcon from "$lib/components/TelegramIcon.svelte";
+import { t } from "$lib/i18n";
+import { addLocaleToPath, getLocaleFromPath } from "$lib/i18n/utils";
 
-	$: loc = getLocaleFromPath($page.url.pathname);
-	$: hrefTelegram = resolve(addLocaleToPath("/connectors/telegram", loc));
-	$: hrefSmtp = resolve(addLocaleToPath("/connectors/smtp", loc));
+$: loc = getLocaleFromPath($page.url.pathname);
+$: hrefTelegram = resolve(addLocaleToPath("/connectors/telegram", loc));
+$: hrefSmtp = resolve(addLocaleToPath("/connectors/smtp", loc));
 
-	type Connector = {
-		slug: "telegram" | "slack" | "smtp";
-		name: string;
-		badge: string;
-		color: string;
-		comingSoon?: boolean;
-	};
+type Connector = {
+	slug: "telegram" | "slack" | "smtp";
+	name: string;
+	badge: string;
+	color: string;
+	comingSoon?: boolean;
+};
 
-	let telegramTokens: TelegramToken[] = [];
-	let smtpAccounts: Awaited<ReturnType<typeof listSmtpAccounts>> = [];
-	let loading = true;
+let telegramTokens: TelegramToken[] = [];
+let smtpAccounts: Awaited<ReturnType<typeof listSmtpAccounts>> = [];
+let loading = true;
 
-	const connectors: Connector[] = [
-		{
-			slug: "telegram",
-			name: "Telegram",
-			badge: "messenger",
-			color: "text-accent",
-		},
-		{
-			slug: "slack",
-			name: "Slack",
-			badge: "chat",
-			color: "text-warning",
-			comingSoon: true,
-		},
-		{
-			slug: "smtp",
-			name: "SMTP",
-			badge: "mail",
-			color: "text-positive",
-		},
-	];
+const connectors: Connector[] = [
+	{
+		slug: "telegram",
+		name: "Telegram",
+		badge: "messenger",
+		color: "text-accent",
+	},
+	{
+		slug: "slack",
+		name: "Slack",
+		badge: "chat",
+		color: "text-warning",
+		comingSoon: true,
+	},
+	{
+		slug: "smtp",
+		name: "SMTP",
+		badge: "mail",
+		color: "text-positive",
+	},
+];
 
 type Note = {
 	id: string;
@@ -51,34 +55,37 @@ type Note = {
 	comment: string;
 };
 
-	let notes: Record<"telegram" | "slack", Note[]> = {
-		telegram: [],
-		slack: [],
-	};
+let notes: Record<"telegram" | "slack", Note[]> = {
+	telegram: [],
+	slack: [],
+};
 
-	let modalOpen = false;
-	let current: Connector | null = null;
-	let secretInput = "";
-	let commentInput = "";
+let modalOpen = false;
+let current: Connector | null = null;
+let secretInput = "";
+let commentInput = "";
 
-	onMount(async () => {
-		try {
-			const [tg, smtp] = await Promise.all([listTelegramTokens(), listSmtpAccounts()]);
-			telegramTokens = tg;
-			smtpAccounts = smtp;
-		} catch (e) {
-			console.error("Failed to load connectors:", e);
-			telegramTokens = [];
-			smtpAccounts = [];
-		} finally {
-			loading = false;
-		}
-	});
+onMount(async () => {
+	try {
+		const [tg, smtp] = await Promise.all([
+			listTelegramTokens(),
+			listSmtpAccounts(),
+		]);
+		telegramTokens = tg;
+		smtpAccounts = smtp;
+	} catch (e) {
+		console.error("Failed to load connectors:", e);
+		telegramTokens = [];
+		smtpAccounts = [];
+	} finally {
+		loading = false;
+	}
+});
 
-	$: activeTelegramCount = telegramTokens.filter((t) => t.isActive).length;
-	$: totalTelegramCount = telegramTokens.length;
-	$: activeSmtpCount = smtpAccounts.filter((a) => a.isActive).length;
-	$: totalSmtpCount = smtpAccounts.length;
+$: activeTelegramCount = telegramTokens.filter((t) => t.isActive).length;
+$: totalTelegramCount = telegramTokens.length;
+$: activeSmtpCount = smtpAccounts.filter((a) => a.isActive).length;
+$: totalSmtpCount = smtpAccounts.length;
 
 function openModal(connector: Connector) {
 	current = connector;

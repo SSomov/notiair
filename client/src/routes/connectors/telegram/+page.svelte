@@ -1,294 +1,297 @@
 <script lang="ts">
-	import { onMount } from "svelte";
-	import { page } from "$app/stores";
-	import { resolve } from "$app/paths";
-	import { getLocaleFromPath, addLocaleToPath } from "$lib/i18n/utils";
-	import { get } from "svelte/store";
-	import { locale, t } from "$lib/i18n";
-	import { resolveI18nError } from "$lib/i18n/resolveError";
-	import {
-		listTelegramTokens,
-		createTelegramToken,
-		updateTelegramToken,
-		deleteTelegramToken,
-		toggleTelegramTokenActive,
-		listChannels,
-		createChannel,
-		updateChannel,
-		deleteChannel,
-		type TelegramToken,
-		type Channel,
-	} from "$lib/api";
+import { onMount } from "svelte";
+import { get } from "svelte/store";
+import { resolve } from "$app/paths";
+import { page } from "$app/stores";
+import {
+	type Channel,
+	createChannel,
+	createTelegramToken,
+	deleteChannel,
+	deleteTelegramToken,
+	listChannels,
+	listTelegramTokens,
+	type TelegramToken,
+	toggleTelegramTokenActive,
+	updateChannel,
+	updateTelegramToken,
+} from "$lib/api";
+import { locale, t } from "$lib/i18n";
+import { resolveI18nError } from "$lib/i18n/resolveError";
+import { addLocaleToPath, getLocaleFromPath } from "$lib/i18n/utils";
 
-	const THREAD_SLOT = 96;
-	const THREAD_W = 64;
+const THREAD_SLOT = 96;
+const THREAD_W = 64;
 
-	let tokens: TelegramToken[] = [];
-	let channelsByTokenId: Record<string, Channel[]> = {};
-	let loading = true;
-	let error: string | null = null;
-	let errorDisplay: string | null = null;
+let tokens: TelegramToken[] = [];
+let channelsByTokenId: Record<string, Channel[]> = {};
+let loading = true;
+let error: string | null = null;
+let errorDisplay: string | null = null;
 
-	let modalOpen = false;
-	let editing: TelegramToken | null = null;
-	let nameInput = "";
-	let secretInput = "";
-	let commentInput = "";
+let modalOpen = false;
+let editing: TelegramToken | null = null;
+let nameInput = "";
+let secretInput = "";
+let commentInput = "";
 
-	let channelModalOpen = false;
-	let channelModalToken: TelegramToken | null = null;
-	let editingChannel: Channel | null = null;
-	let channelInput = "";
-	let channelNameInput = "";
-	let channelDescription = "";
-	let savingChannel = false;
+let channelModalOpen = false;
+let channelModalToken: TelegramToken | null = null;
+let editingChannel: Channel | null = null;
+let channelInput = "";
+let channelNameInput = "";
+let channelDescription = "";
+let savingChannel = false;
 
-	$: loc = getLocaleFromPath($page.url.pathname);
-	$: hrefConnectors = resolve(addLocaleToPath("/connectors", loc));
-	let saving = false;
+$: loc = getLocaleFromPath($page.url.pathname);
+$: hrefConnectors = resolve(addLocaleToPath("/connectors", loc));
+let saving = false;
 
-	function maskSecret(secret: string): string {
-		if (!secret || secret.length <= 8) return "••••••••";
-		const start = secret.substring(0, 2);
-		const end = secret.substring(secret.length - 2);
-		const masked = "•".repeat(Math.min(12, secret.length - 4));
-		return `${start}${masked}${end}`;
+function maskSecret(secret: string): string {
+	if (!secret || secret.length <= 8) return "••••••••";
+	const start = secret.substring(0, 2);
+	const end = secret.substring(secret.length - 2);
+	const masked = "•".repeat(Math.min(12, secret.length - 4));
+	return `${start}${masked}${end}`;
+}
+
+function threadGraphic(count: number) {
+	const H = count * THREAD_SLOT;
+	const yStart = H / 2;
+	const items: { d: string; yEnd: number }[] = [];
+	for (let i = 0; i < count; i++) {
+		const yEnd = i * THREAD_SLOT + THREAD_SLOT / 2;
+		items.push({
+			d: `M 0 ${yStart} C 22 ${yStart}, 44 ${yEnd}, ${THREAD_W} ${yEnd}`,
+			yEnd,
+		});
 	}
+	return { H, yStart, items };
+}
 
-	function threadGraphic(count: number) {
-		const H = count * THREAD_SLOT;
-		const yStart = H / 2;
-		const items: { d: string; yEnd: number }[] = [];
-		for (let i = 0; i < count; i++) {
-			const yEnd = i * THREAD_SLOT + THREAD_SLOT / 2;
-			items.push({
-				d: `M 0 ${yStart} C 22 ${yStart}, 44 ${yEnd}, ${THREAD_W} ${yEnd}`,
-				yEnd,
-			});
-		}
-		return { H, yStart, items };
+onMount(async () => {
+	await loadTokens();
+});
+
+async function refreshChannelMap() {
+	if (tokens.length === 0) {
+		channelsByTokenId = {};
+		return;
 	}
-
-	onMount(async () => {
-		await loadTokens();
-	});
-
-	async function refreshChannelMap() {
-		if (tokens.length === 0) {
-			channelsByTokenId = {};
-			return;
-		}
-		const entries = await Promise.all(
-			tokens.map(async (tok) => {
-				try {
-					const ch = await listChannels(tok.id);
-					return [tok.id, ch] as const;
-				} catch {
-					return [tok.id, []] as const;
-				}
-			}),
-		);
-		channelsByTokenId = Object.fromEntries(entries);
-	}
-
-	async function loadTokens() {
-		try {
-			loading = true;
-			error = null;
-			const data = await listTelegramTokens();
-			tokens = Array.isArray(data) ? data : [];
-			await refreshChannelMap();
-		} catch (e) {
-			error = e instanceof Error ? e.message : "errors.loadTokens";
-			tokens = [];
-			channelsByTokenId = {};
-		} finally {
-			loading = false;
-		}
-	}
-
-	function openModal(tok?: TelegramToken) {
-		editing = tok || null;
-		nameInput = tok?.name || "";
-		secretInput = tok?.secret || "";
-		commentInput = tok?.comment || "";
-		modalOpen = true;
-		error = null;
-	}
-
-	function closeModal() {
-		modalOpen = false;
-		editing = null;
-		nameInput = "";
-		secretInput = "";
-		commentInput = "";
-		error = null;
-	}
-
-	async function handleSave() {
-		if (!secretInput.trim() || !nameInput.trim() || saving) return;
-
-		try {
-			saving = true;
-			error = null;
-
-			if (editing) {
-				const id = editing.id;
-				const updated = await updateTelegramToken(id, {
-					name: nameInput.trim(),
-					secret: secretInput.trim(),
-					comment: commentInput.trim(),
-				});
-				tokens = tokens.map((row) => (row.id === id ? updated : row));
-			} else {
-				const created = await createTelegramToken({
-					name: nameInput.trim(),
-					secret: secretInput.trim(),
-					comment: commentInput.trim(),
-				});
-				tokens = [...tokens, created];
-				channelsByTokenId = { ...channelsByTokenId, [created.id]: [] };
+	const entries = await Promise.all(
+		tokens.map(async (tok) => {
+			try {
+				const ch = await listChannels(tok.id);
+				return [tok.id, ch] as const;
+			} catch {
+				return [tok.id, []] as const;
 			}
+		}),
+	);
+	channelsByTokenId = Object.fromEntries(entries);
+}
 
-			closeModal();
-		} catch (e) {
-			error = e instanceof Error
+async function loadTokens() {
+	try {
+		loading = true;
+		error = null;
+		const data = await listTelegramTokens();
+		tokens = Array.isArray(data) ? data : [];
+		await refreshChannelMap();
+	} catch (e) {
+		error = e instanceof Error ? e.message : "errors.loadTokens";
+		tokens = [];
+		channelsByTokenId = {};
+	} finally {
+		loading = false;
+	}
+}
+
+function openModal(tok?: TelegramToken) {
+	editing = tok || null;
+	nameInput = tok?.name || "";
+	secretInput = tok?.secret || "";
+	commentInput = tok?.comment || "";
+	modalOpen = true;
+	error = null;
+}
+
+function closeModal() {
+	modalOpen = false;
+	editing = null;
+	nameInput = "";
+	secretInput = "";
+	commentInput = "";
+	error = null;
+}
+
+async function handleSave() {
+	if (!secretInput.trim() || !nameInput.trim() || saving) return;
+
+	try {
+		saving = true;
+		error = null;
+
+		if (editing) {
+			const id = editing.id;
+			const updated = await updateTelegramToken(id, {
+				name: nameInput.trim(),
+				secret: secretInput.trim(),
+				comment: commentInput.trim(),
+			});
+			tokens = tokens.map((row) => (row.id === id ? updated : row));
+		} else {
+			const created = await createTelegramToken({
+				name: nameInput.trim(),
+				secret: secretInput.trim(),
+				comment: commentInput.trim(),
+			});
+			tokens = [...tokens, created];
+			channelsByTokenId = { ...channelsByTokenId, [created.id]: [] };
+		}
+
+		closeModal();
+	} catch (e) {
+		error =
+			e instanceof Error
 				? e.message
 				: editing
 					? "errors.updateToken"
 					: "errors.createToken";
-		} finally {
-			saving = false;
-		}
+	} finally {
+		saving = false;
 	}
+}
 
-	async function handleDelete(id: string) {
-		if (!confirm(get(t)("telegramConnectorPage.confirmDelete"))) return;
+async function handleDelete(id: string) {
+	if (!confirm(get(t)("telegramConnectorPage.confirmDelete"))) return;
 
-		try {
-			error = null;
-			await deleteTelegramToken(id);
-			tokens = tokens.filter((row) => row.id !== id);
-			const next = { ...channelsByTokenId };
-			delete next[id];
-			channelsByTokenId = next;
-		} catch (e) {
-			error = e instanceof Error ? e.message : "errors.deleteToken";
-		}
-	}
-
-	async function handleToggleActive(tok: TelegramToken) {
-		try {
-			error = null;
-			const updated = await toggleTelegramTokenActive(tok.id, !tok.isActive);
-			tokens = tokens.map((row) => (row.id === tok.id ? updated : row));
-		} catch (e) {
-			error = e instanceof Error ? e.message : "errors.toggleTokenStatus";
-		}
-	}
-
-	function openChannelModal(tok: TelegramToken, ch?: Channel) {
-		channelModalToken = tok;
-		editingChannel = ch || null;
-		channelInput = ch?.name || "";
-		channelNameInput = ch?.displayName || "";
-		channelDescription = ch?.description || "";
-		channelModalOpen = true;
+	try {
 		error = null;
+		await deleteTelegramToken(id);
+		tokens = tokens.filter((row) => row.id !== id);
+		const next = { ...channelsByTokenId };
+		delete next[id];
+		channelsByTokenId = next;
+	} catch (e) {
+		error = e instanceof Error ? e.message : "errors.deleteToken";
 	}
+}
 
-	function closeChannelModal() {
-		channelModalOpen = false;
-		channelModalToken = null;
-		editingChannel = null;
-		channelInput = "";
-		channelNameInput = "";
-		channelDescription = "";
+async function handleToggleActive(tok: TelegramToken) {
+	try {
+		error = null;
+		const updated = await toggleTelegramTokenActive(tok.id, !tok.isActive);
+		tokens = tokens.map((row) => (row.id === tok.id ? updated : row));
+	} catch (e) {
+		error = e instanceof Error ? e.message : "errors.toggleTokenStatus";
 	}
+}
 
-	async function handleSaveChannel() {
-		if (!channelModalToken || !channelInput.trim() || savingChannel) return;
+function openChannelModal(tok: TelegramToken, ch?: Channel) {
+	channelModalToken = tok;
+	editingChannel = ch || null;
+	channelInput = ch?.name || "";
+	channelNameInput = ch?.displayName || "";
+	channelDescription = ch?.description || "";
+	channelModalOpen = true;
+	error = null;
+}
 
-		try {
-			savingChannel = true;
-			error = null;
-			const tid = channelModalToken.id;
-			const value = channelInput.trim();
-			const displayName = channelNameInput.trim() || undefined;
-			const description = channelDescription.trim();
+function closeChannelModal() {
+	channelModalOpen = false;
+	channelModalToken = null;
+	editingChannel = null;
+	channelInput = "";
+	channelNameInput = "";
+	channelDescription = "";
+}
 
-			if (editingChannel) {
-				const ec = editingChannel;
-				const updated = await updateChannel(ec.id, {
-					name: value,
-					displayName,
-					description,
-					muted: ec.muted,
-				});
-				channelsByTokenId = {
-					...channelsByTokenId,
-					[tid]: (channelsByTokenId[tid] || []).map((c) =>
-						c.id === ec.id ? updated : c,
-					),
-				};
-			} else {
-				const created = await createChannel(tid, {
-					name: value,
-					displayName,
-					description,
-					muted: false,
-				});
-				const list = channelsByTokenId[tid] || [];
-				channelsByTokenId = { ...channelsByTokenId, [tid]: [...list, created] };
-			}
+async function handleSaveChannel() {
+	if (!channelModalToken || !channelInput.trim() || savingChannel) return;
 
-			closeChannelModal();
-		} catch (e) {
-			error = e instanceof Error ? e.message : "errors.saveChannel";
-		} finally {
-			savingChannel = false;
-		}
-	}
+	try {
+		savingChannel = true;
+		error = null;
+		const tid = channelModalToken.id;
+		const value = channelInput.trim();
+		const displayName = channelNameInput.trim() || undefined;
+		const description = channelDescription.trim();
 
-	async function handleDeleteChannel(tokenId: string, channelId: string) {
-		if (!confirm(get(t)("channelsPage.confirmDeleteChannel"))) return;
-
-		try {
-			error = null;
-			await deleteChannel(channelId);
-			channelsByTokenId = {
-				...channelsByTokenId,
-				[tokenId]: (channelsByTokenId[tokenId] || []).filter((c) => c.id !== channelId),
-			};
-		} catch (e) {
-			error = e instanceof Error ? e.message : "errors.deleteChannel";
-		}
-	}
-
-	async function handleToggleMute(tokenId: string, ch: Channel) {
-		try {
-			error = null;
-			const updated = await updateChannel(ch.id, {
-				name: ch.name,
-				displayName: ch.displayName,
-				description: ch.description,
-				muted: !ch.muted,
+		if (editingChannel) {
+			const ec = editingChannel;
+			const updated = await updateChannel(ec.id, {
+				name: value,
+				displayName,
+				description,
+				muted: ec.muted,
 			});
 			channelsByTokenId = {
 				...channelsByTokenId,
-				[tokenId]: (channelsByTokenId[tokenId] || []).map((c) =>
-					c.id === ch.id ? updated : c,
+				[tid]: (channelsByTokenId[tid] || []).map((c) =>
+					c.id === ec.id ? updated : c,
 				),
 			};
-		} catch (e) {
-			error = e instanceof Error ? e.message : "errors.toggleChannelStatus";
+		} else {
+			const created = await createChannel(tid, {
+				name: value,
+				displayName,
+				description,
+				muted: false,
+			});
+			const list = channelsByTokenId[tid] || [];
+			channelsByTokenId = { ...channelsByTokenId, [tid]: [...list, created] };
 		}
-	}
 
-	$: {
-		$locale;
-		errorDisplay = error ? resolveI18nError(error) : null;
+		closeChannelModal();
+	} catch (e) {
+		error = e instanceof Error ? e.message : "errors.saveChannel";
+	} finally {
+		savingChannel = false;
 	}
+}
+
+async function handleDeleteChannel(tokenId: string, channelId: string) {
+	if (!confirm(get(t)("channelsPage.confirmDeleteChannel"))) return;
+
+	try {
+		error = null;
+		await deleteChannel(channelId);
+		channelsByTokenId = {
+			...channelsByTokenId,
+			[tokenId]: (channelsByTokenId[tokenId] || []).filter(
+				(c) => c.id !== channelId,
+			),
+		};
+	} catch (e) {
+		error = e instanceof Error ? e.message : "errors.deleteChannel";
+	}
+}
+
+async function handleToggleMute(tokenId: string, ch: Channel) {
+	try {
+		error = null;
+		const updated = await updateChannel(ch.id, {
+			name: ch.name,
+			displayName: ch.displayName,
+			description: ch.description,
+			muted: !ch.muted,
+		});
+		channelsByTokenId = {
+			...channelsByTokenId,
+			[tokenId]: (channelsByTokenId[tokenId] || []).map((c) =>
+				c.id === ch.id ? updated : c,
+			),
+		};
+	} catch (e) {
+		error = e instanceof Error ? e.message : "errors.toggleChannelStatus";
+	}
+}
+
+$: {
+	$locale;
+	errorDisplay = error ? resolveI18nError(error) : null;
+}
 </script>
 
 <section class="space-y-8 px-4 pb-12 pt-2 md:px-12 md:pt-4">

@@ -1,181 +1,196 @@
 <script lang="ts">
-	import { createEventDispatcher, onDestroy, onMount } from 'svelte';
-	import { t } from '$lib/i18n';
-	import {
-		listStorageRecords,
-		getStorageRecord,
-		deleteStorageRecord,
-		type StorageRecordListItem,
-	} from '$lib/api';
+import { createEventDispatcher, onDestroy, onMount } from "svelte";
+import {
+	deleteStorageRecord,
+	getStorageRecord,
+	listStorageRecords,
+	type StorageRecordListItem,
+} from "$lib/api";
+import { t } from "$lib/i18n";
 
-	export let workflowId: string;
-	export let nodeId: string;
-	export let nodeLabel: string;
+export let workflowId: string;
+export let nodeId: string;
+export let nodeLabel: string;
 
-	const dispatch = createEventDispatcher<{
-		close: void;
-		labelChange: string;
-		error: string;
-	}>();
+const dispatch = createEventDispatcher<{
+	close: undefined;
+	labelChange: string;
+	error: string;
+}>();
 
-	const pageSize = 20;
+const pageSize = 20;
 
-	let editingLabel = false;
-	let labelDraft = nodeLabel;
+let editingLabel = false;
+let labelDraft = nodeLabel;
 
-	let searchQuery = '';
-	let searchDebounced = '';
-	let searchTimer: ReturnType<typeof setTimeout> | null = null;
+let searchQuery = "";
+let searchDebounced = "";
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
 
-	let page = 1;
-	let total = 0;
-	let items: StorageRecordListItem[] = [];
-	let loading = false;
+let page = 1;
+let total = 0;
+let items: StorageRecordListItem[] = [];
+let loading = false;
 
-	let selectedRecordId: string | null = null;
-	let previewContent = '';
-	let previewLoading = false;
+let selectedRecordId: string | null = null;
+let previewContent = "";
+let previewLoading = false;
 
-	$: pageCount = Math.max(1, Math.ceil(total / pageSize));
-	$: page = Math.min(page, pageCount);
-	$: rangeFrom = total === 0 ? 0 : (page - 1) * pageSize + 1;
-	$: rangeTo = total === 0 ? 0 : Math.min(page * pageSize, total);
-	$: canPrev = page > 1;
-	$: canNext = page < pageCount;
+$: pageCount = Math.max(1, Math.ceil(total / pageSize));
+$: page = Math.min(page, pageCount);
+$: rangeFrom = total === 0 ? 0 : (page - 1) * pageSize + 1;
+$: rangeTo = total === 0 ? 0 : Math.min(page * pageSize, total);
+$: canPrev = page > 1;
+$: canNext = page < pageCount;
 
-	function formatStorageSize(bytes: number): string {
-		if (bytes < 1024) return `${bytes} B`;
-		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-	}
+function formatStorageSize(bytes: number): string {
+	if (bytes < 1024) return `${bytes} B`;
+	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
-	async function loadRecords() {
-		loading = true;
-		try {
-			const result = await listStorageRecords(workflowId, nodeId, {
-				limit: pageSize,
-				offset: (page - 1) * pageSize,
-				q: searchDebounced,
-			});
-			items = result.items;
-			total = result.total;
-			const maxPage = Math.max(1, Math.ceil(total / pageSize));
-			if (page > maxPage) {
-				page = maxPage;
-				loading = false;
-				await loadRecords();
-				return;
-			}
-			if (selectedRecordId && !items.some((r) => r.id === selectedRecordId)) {
-				selectedRecordId = null;
-				previewContent = '';
-			}
-		} catch (e) {
-			dispatch('error', e instanceof Error ? e.message : 'errors.loadStorageRecords');
-			items = [];
-			total = 0;
-		} finally {
+async function loadRecords() {
+	loading = true;
+	try {
+		const result = await listStorageRecords(workflowId, nodeId, {
+			limit: pageSize,
+			offset: (page - 1) * pageSize,
+			q: searchDebounced,
+		});
+		items = result.items;
+		total = result.total;
+		const maxPage = Math.max(1, Math.ceil(total / pageSize));
+		if (page > maxPage) {
+			page = maxPage;
 			loading = false;
-		}
-	}
-
-	async function selectRecord(recordId: string) {
-		if (selectedRecordId === recordId && previewContent) return;
-		selectedRecordId = recordId;
-		previewLoading = true;
-		previewContent = '';
-		try {
-			const rec = await getStorageRecord(workflowId, recordId);
-			previewContent = rec.data;
-		} catch (e) {
-			dispatch('error', e instanceof Error ? e.message : 'errors.loadStorageRecord');
-			previewContent = '';
-		} finally {
-			previewLoading = false;
-		}
-	}
-
-	async function downloadRecord(record: StorageRecordListItem, event: MouseEvent) {
-		event.stopPropagation();
-		try {
-			const rec = await getStorageRecord(workflowId, record.id);
-			const blob = new Blob([rec.data], {
-				type: rec.contentType || 'application/octet-stream',
-			});
-			const url = URL.createObjectURL(blob);
-			const a = document.createElement('a');
-			a.href = url;
-			a.download = `storage-${record.id}.txt`;
-			a.click();
-			URL.revokeObjectURL(url);
-		} catch (e) {
-			dispatch('error', e instanceof Error ? e.message : 'errors.loadStorageRecord');
-		}
-	}
-
-	async function removeRecord(recordId: string, event: MouseEvent) {
-		event.stopPropagation();
-		try {
-			await deleteStorageRecord(workflowId, recordId);
-			if (selectedRecordId === recordId) {
-				selectedRecordId = null;
-				previewContent = '';
-			}
 			await loadRecords();
-		} catch (e) {
-			dispatch('error', e instanceof Error ? e.message : 'errors.deleteStorageRecord');
+			return;
 		}
-	}
-
-	function toggleEditLabel() {
-		editingLabel = !editingLabel;
-		if (editingLabel) {
-			labelDraft = nodeLabel;
+		if (selectedRecordId && !items.some((r) => r.id === selectedRecordId)) {
+			selectedRecordId = null;
+			previewContent = "";
 		}
+	} catch (e) {
+		dispatch(
+			"error",
+			e instanceof Error ? e.message : "errors.loadStorageRecords",
+		);
+		items = [];
+		total = 0;
+	} finally {
+		loading = false;
 	}
+}
 
-	function saveLabel() {
-		const trimmed = labelDraft.trim();
-		if (trimmed) {
-			dispatch('labelChange', trimmed);
+async function selectRecord(recordId: string) {
+	if (selectedRecordId === recordId && previewContent) return;
+	selectedRecordId = recordId;
+	previewLoading = true;
+	previewContent = "";
+	try {
+		const rec = await getStorageRecord(workflowId, recordId);
+		previewContent = rec.data;
+	} catch (e) {
+		dispatch(
+			"error",
+			e instanceof Error ? e.message : "errors.loadStorageRecord",
+		);
+		previewContent = "";
+	} finally {
+		previewLoading = false;
+	}
+}
+
+async function downloadRecord(
+	record: StorageRecordListItem,
+	event: MouseEvent,
+) {
+	event.stopPropagation();
+	try {
+		const rec = await getStorageRecord(workflowId, record.id);
+		const blob = new Blob([rec.data], {
+			type: rec.contentType || "application/octet-stream",
+		});
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement("a");
+		a.href = url;
+		a.download = `storage-${record.id}.txt`;
+		a.click();
+		URL.revokeObjectURL(url);
+	} catch (e) {
+		dispatch(
+			"error",
+			e instanceof Error ? e.message : "errors.loadStorageRecord",
+		);
+	}
+}
+
+async function removeRecord(recordId: string, event: MouseEvent) {
+	event.stopPropagation();
+	try {
+		await deleteStorageRecord(workflowId, recordId);
+		if (selectedRecordId === recordId) {
+			selectedRecordId = null;
+			previewContent = "";
 		}
-		editingLabel = false;
+		await loadRecords();
+	} catch (e) {
+		dispatch(
+			"error",
+			e instanceof Error ? e.message : "errors.deleteStorageRecord",
+		);
 	}
+}
 
-	function scheduleSearch() {
-		if (searchTimer) clearTimeout(searchTimer);
-		searchTimer = setTimeout(() => {
-			searchDebounced = searchQuery.trim();
-			page = 1;
-			void loadRecords();
-		}, 300);
+function toggleEditLabel() {
+	editingLabel = !editingLabel;
+	if (editingLabel) {
+		labelDraft = nodeLabel;
 	}
+}
 
-	function goPrev() {
-		if (!canPrev) return;
-		page -= 1;
+function saveLabel() {
+	const trimmed = labelDraft.trim();
+	if (trimmed) {
+		dispatch("labelChange", trimmed);
+	}
+	editingLabel = false;
+}
+
+function scheduleSearch() {
+	if (searchTimer) clearTimeout(searchTimer);
+	searchTimer = setTimeout(() => {
+		searchDebounced = searchQuery.trim();
+		page = 1;
 		void loadRecords();
+	}, 300);
+}
+
+function goPrev() {
+	if (!canPrev) return;
+	page -= 1;
+	void loadRecords();
+}
+
+function goNext() {
+	if (!canNext) return;
+	page += 1;
+	void loadRecords();
+}
+
+function handleKeydown(event: KeyboardEvent) {
+	if (event.key === "Escape") {
+		dispatch("close");
 	}
+}
 
-	function goNext() {
-		if (!canNext) return;
-		page += 1;
-		void loadRecords();
-	}
+onMount(() => {
+	void loadRecords();
+});
 
-	function handleKeydown(event: KeyboardEvent) {
-		if (event.key === 'Escape') {
-			dispatch('close');
-		}
-	}
-
-	onMount(() => {
-		void loadRecords();
-	});
-
-	onDestroy(() => {
-		if (searchTimer) clearTimeout(searchTimer);
-	});
+onDestroy(() => {
+	if (searchTimer) clearTimeout(searchTimer);
+});
 </script>
 
 <svelte:window on:keydown={handleKeydown} />

@@ -1,89 +1,92 @@
 <script lang="ts">
-	import { onMount } from "svelte";
-	import { page } from "$app/stores";
-	import { resolve } from "$app/paths";
-	import { locale, t } from "$lib/i18n";
-	import { listWorkflows, deleteWorkflow } from "$lib/api";
-	import { getLocaleFromPath, addLocaleToPath } from "$lib/i18n/utils";
-	import { resolveI18nError } from "$lib/i18n/resolveError";
-	import type { WorkflowDraft } from "$lib/types/workflow";
-	import { get } from "svelte/store";
+import { onMount } from "svelte";
+import { get } from "svelte/store";
+import { resolve } from "$app/paths";
+import { page } from "$app/stores";
+import { deleteWorkflow, listWorkflows } from "$lib/api";
+import { locale, t } from "$lib/i18n";
+import { resolveI18nError } from "$lib/i18n/resolveError";
+import { addLocaleToPath, getLocaleFromPath } from "$lib/i18n/utils";
+import type { WorkflowDraft } from "$lib/types/workflow";
 
-	$: loc = getLocaleFromPath($page.url.pathname);
-	$: hrefNew = resolve(addLocaleToPath("/workflows/new", loc));
-	const hrefEdit = (id: string) =>
-		resolve(addLocaleToPath(`/workflows/edit?id=${encodeURIComponent(id)}`, loc));
+$: loc = getLocaleFromPath($page.url.pathname);
+$: hrefNew = resolve(addLocaleToPath("/workflows/new", loc));
+const hrefEdit = (id: string) =>
+	resolve(addLocaleToPath(`/workflows/edit?id=${encodeURIComponent(id)}`, loc));
 
-	let workflows: WorkflowDraft[] = [];
-	let loading = true;
-	let error: string | null = null;
-	let deletingId: string | null = null;
-	let errorDisplay: string | null = null;
+let workflows: WorkflowDraft[] = [];
+let loading = true;
+let error: string | null = null;
+let deletingId: string | null = null;
+let errorDisplay: string | null = null;
 
-	onMount(async () => {
-		try {
-			workflows = await listWorkflows();
-		} catch (e) {
-			error = e instanceof Error ? e.message : "errors.loadWorkflows";
-			workflows = [];
-		} finally {
-			loading = false;
-		}
-	});
+onMount(async () => {
+	try {
+		workflows = await listWorkflows();
+	} catch (e) {
+		error = e instanceof Error ? e.message : "errors.loadWorkflows";
+		workflows = [];
+	} finally {
+		loading = false;
+	}
+});
 
-	async function handleDelete(id: string) {
-		if (!confirm(get(t)("workflows.confirmDeleteDraft"))) {
-			return;
-		}
-
-		deletingId = id;
-		try {
-			await deleteWorkflow(id);
-			workflows = workflows.filter((w) => w.id !== id);
-		} catch (e) {
-			error = e instanceof Error ? e.message : "errors.deleteWorkflow";
-		} finally {
-			deletingId = null;
-		}
+async function handleDelete(id: string) {
+	if (!confirm(get(t)("workflows.confirmDeleteDraft"))) {
+		return;
 	}
 
-	$: activeWorkflows = workflows.filter((w) => w.isActive === true);
-	$: draftWorkflows = workflows.filter((w) => w.isActive !== true);
-
-	function formatUpdatedDate(date: string | undefined, localeCode: string): string {
-		if (!date) return "";
-		const d = new Date(date);
-		const now = new Date();
-		const diffMs = now.getTime() - d.getTime();
-		const diffMins = Math.floor(diffMs / 60000);
-		const diffHours = Math.floor(diffMs / 3600000);
-		const diffDays = Math.floor(diffMs / 86400000);
-		const locTag = localeCode === "ru" ? "ru-RU" : "en-US";
-		const rtf = new Intl.RelativeTimeFormat(locTag, { numeric: "auto" });
-		if (diffMins < 60) {
-			return rtf.format(-diffMins, "minute");
-		}
-		if (diffHours < 24) {
-			return rtf.format(-diffHours, "hour");
-		}
-		if (diffDays < 7) {
-			return rtf.format(-diffDays, "day");
-		}
-		return d.toLocaleDateString(locTag);
+	deletingId = id;
+	try {
+		await deleteWorkflow(id);
+		workflows = workflows.filter((w) => w.id !== id);
+	} catch (e) {
+		error = e instanceof Error ? e.message : "errors.deleteWorkflow";
+	} finally {
+		deletingId = null;
 	}
+}
 
-	$: {
-		$locale;
-		errorDisplay = error ? resolveI18nError(error) : null;
-	}
+$: activeWorkflows = workflows.filter((w) => w.isActive === true);
+$: draftWorkflows = workflows.filter((w) => w.isActive !== true);
 
-	async function handleCopyWorkflowId(id: string) {
-		try {
-			await navigator.clipboard.writeText(id);
-		} catch {
-			// ignore — clipboard may be unavailable
-		}
+function formatUpdatedDate(
+	date: string | undefined,
+	localeCode: string,
+): string {
+	if (!date) return "";
+	const d = new Date(date);
+	const now = new Date();
+	const diffMs = now.getTime() - d.getTime();
+	const diffMins = Math.floor(diffMs / 60000);
+	const diffHours = Math.floor(diffMs / 3600000);
+	const diffDays = Math.floor(diffMs / 86400000);
+	const locTag = localeCode === "ru" ? "ru-RU" : "en-US";
+	const rtf = new Intl.RelativeTimeFormat(locTag, { numeric: "auto" });
+	if (diffMins < 60) {
+		return rtf.format(-diffMins, "minute");
 	}
+	if (diffHours < 24) {
+		return rtf.format(-diffHours, "hour");
+	}
+	if (diffDays < 7) {
+		return rtf.format(-diffDays, "day");
+	}
+	return d.toLocaleDateString(locTag);
+}
+
+$: {
+	$locale;
+	errorDisplay = error ? resolveI18nError(error) : null;
+}
+
+async function handleCopyWorkflowId(id: string) {
+	try {
+		await navigator.clipboard.writeText(id);
+	} catch {
+		// ignore — clipboard may be unavailable
+	}
+}
 </script>
 
 <section class="space-y-8 px-4 pb-12 pt-2 md:px-12 md:pt-4">

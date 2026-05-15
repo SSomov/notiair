@@ -1,6 +1,6 @@
 <script lang="ts">
-	export let size: number = 16;
-	export let title: string = "Telegram";
+export let size: number = 16;
+export let title: string = "Telegram";
 </script>
 
 <span class="telegram-icon" {title}>
