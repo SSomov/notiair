@@ -67,6 +67,7 @@
 		"saveChannel": "Could not save channel",
 		"toggleChannelStatus": "Could not change channel status",
 		"invalidJsonPayload": "Invalid JSON in payload",
+		"invalidJsonAtLine": "Invalid JSON (line {line}): {message}",
 		"saveWorkflowFirst": "Save the workflow first",
 		"addTemplateToGraph": "Add a template node to the graph",
 		"runFailed": "Could not run",

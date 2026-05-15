@@ -67,6 +67,7 @@
 		"saveChannel": "Не удалось сохранить канал",
 		"toggleChannelStatus": "Не удалось изменить статус канала",
 		"invalidJsonPayload": "Неверный формат JSON в payload",
+		"invalidJsonAtLine": "Неверный JSON (строка {line}): {message}",
 		"saveWorkflowFirst": "Сначала сохраните workflow",
 		"addTemplateToGraph": "Добавьте шаблон в граф",
 		"runFailed": "Не удалось запустить",

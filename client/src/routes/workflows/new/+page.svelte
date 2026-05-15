@@ -5,6 +5,7 @@
 	import { get } from 'svelte/store';
 	import { locale, t } from '$lib/i18n';
 	import { resolveI18nError } from '$lib/i18n/resolveError';
+	import { parseJsonStrict, type JsonParseError } from '$lib/parseJson';
 	import { page } from '$app/stores';
 	import {
 		saveWorkflow,
@@ -167,6 +168,7 @@
 	let editingTriggerNodeId: string | null = null;
 	let triggerPayloadJson = '{}';
 	let triggerPayload: Record<string, any> = {};
+	let triggerPayloadParseError: JsonParseError | null = null;
 
 	// Состояние для кнопки Play у Manual триггера
 	let playingManualNodeId: string | null = null;
@@ -222,6 +224,7 @@
 
 	let errorDisplay: string | null = null;
 	let templatePayloadErrorDisplay: string | null = null;
+	let triggerPayloadErrorDisplay: string | null = null;
 
 	$: {
 		$locale;
@@ -229,6 +232,20 @@
 		templatePayloadErrorDisplay = templatePayloadError
 			? resolveI18nError(templatePayloadError)
 			: null;
+		triggerPayloadErrorDisplay = triggerPayloadParseError
+			? formatJsonParseError(triggerPayloadParseError)
+			: null;
+	}
+
+	function formatJsonParseError(parseError: { message: string; line: number | null }): string {
+		const tr = get(t);
+		if (parseError.line !== null) {
+			return tr('errors.invalidJsonAtLine', {
+				line: parseError.line,
+				message: parseError.message,
+			});
+		}
+		return `${tr('errors.invalidJsonPayload')}: ${parseError.message}`;
 	}
 
 	function getChannelConnectorType(node: CanvasNode): 'telegram' | 'slack' | 'smtp' | null {
@@ -779,6 +796,7 @@
 
 	function openTriggerPayloadEdit(nodeId: string) {
 		editingTriggerNodeId = nodeId;
+		triggerPayloadParseError = null;
 		const node = nodes.find((n) => n.id === nodeId);
 		if (node && node.triggerPayload && Object.keys(node.triggerPayload).length > 0) {
 			// Используем сохраненный payload из ноды
@@ -797,6 +815,7 @@
 		editingTriggerNodeId = null;
 		triggerPayloadJson = '{}';
 		triggerPayload = {};
+		triggerPayloadParseError = null;
 	}
 
 	async function openEventTypesEdit(nodeId: string) {
@@ -947,25 +966,24 @@
 	function saveTriggerPayload() {
 		if (!editingTriggerNodeId) return;
 
-		try {
-			// Парсим JSON payload
-			const payload = JSON.parse(triggerPayloadJson);
-
-			nodes = nodes.map((node) => {
-				if (node.id === editingTriggerNodeId) {
-					return {
-						...node,
-						triggerPayload: payload,
-					};
-				}
-				return node;
-			});
-
-			closeTriggerPayloadEdit();
-		} catch (e) {
-			error = 'errors.invalidJsonPayload';
-			console.error('Invalid JSON:', e);
+		const parsed = parseJsonStrict(triggerPayloadJson);
+		if (!parsed.ok) {
+			triggerPayloadParseError = parsed.error;
+			return;
 		}
+
+		const payload = parsed.value as Record<string, any>;
+		nodes = nodes.map((node) => {
+			if (node.id === editingTriggerNodeId) {
+				return {
+					...node,
+					triggerPayload: payload,
+				};
+			}
+			return node;
+		});
+
+		closeTriggerPayloadEdit();
 	}
 
 	async function runManualTrigger(nodeId: string) {
@@ -2233,9 +2251,17 @@
 				</button>
 			</div>
 			<div class="modal-body">
+				{#if triggerPayloadParseError}
+					<div class="mb-2 p-2 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
+						{triggerPayloadErrorDisplay}
+					</div>
+				{/if}
 				<textarea
 					class="template-editor"
 					bind:value={triggerPayloadJson}
+					on:input={() => {
+						triggerPayloadParseError = null;
+					}}
 					placeholder={`{"key": "value"}`}
 					spellcheck="false"
 					style="min-height: 300px; width: 100%; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace; font-size: 0.875rem; line-height: 1.5; border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 0.5rem; padding: 1rem; background: rgba(248, 250, 252, 0.5); color: #1e293b; resize: vertical;"
