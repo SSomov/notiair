@@ -7,15 +7,24 @@ import (
 
 	persiststorage "notiair/internal/persistence/storage"
 	"notiair/internal/storage"
+	tplrender "notiair/internal/template"
 	"notiair/internal/workflow"
 )
 
 type nodeConfig struct {
-	Variant       string `json:"variant"`
-	ChannelID     string `json:"channelId"`
-	StorageMode   string `json:"storageMode"`
-	TemplateBody  string `json:"templateBody"`
+	Variant         string         `json:"variant"`
+	ChannelID       string         `json:"channelId"`
+	StorageMode     string         `json:"storageMode"`
+	TemplateBody    string         `json:"templateBody"`
 	TemplatePayload map[string]any `json:"templatePayload"`
+}
+
+// flowData is the output passed along edges (from the block on the left).
+type flowData struct {
+	Data        []byte
+	ContentType string
+	Mode        persiststorage.Mode
+	Payload     map[string]any
 }
 
 type StorageSaver interface {
@@ -58,37 +67,53 @@ func nodeByID(nodes []workflow.Node) map[string]workflow.Node {
 	return m
 }
 
-func findUpstreamTemplate(wf workflow.Workflow, storageNodeID string) *workflow.Node {
-	incoming := make(map[string]bool)
-	for _, e := range wf.Edges {
-		if e.To == storageNodeID {
-			incoming[e.From] = true
-		}
+func initialFlow(payload map[string]any) (flowData, error) {
+	if payload == nil {
+		payload = map[string]any{}
 	}
-	for id := range incoming {
-		n, ok := nodeByID(wf.Nodes)[id]
-		if !ok {
-			continue
-		}
-		cfg := parseNodeConfig(n)
-		if cfg.Variant == "template" {
-			return &n
-		}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return flowData{}, err
 	}
-	return nil
+	return flowData{
+		Data:        data,
+		ContentType: "application/json",
+		Mode:        persiststorage.ModeRaw,
+		Payload:     payload,
+	}, nil
 }
 
-func findFirstTemplate(wf workflow.Workflow) *workflow.Node {
-	for i := range wf.Nodes {
-		cfg := parseNodeConfig(wf.Nodes[i])
-		if cfg.Variant == "template" {
-			return &wf.Nodes[i]
-		}
+func templateOutput(in flowData, templateBody string) flowData {
+	rendered := tplrender.Render(templateBody, in.Payload)
+	return flowData{
+		Data:        []byte(rendered),
+		ContentType: "text/plain; charset=utf-8",
+		Mode:        persiststorage.ModeRendered,
+		Payload:     map[string]any{"body": rendered},
 	}
-	return nil
 }
 
-// executeGraph walks the workflow graph from triggers, persists storage nodes, and returns channel tasks.
+func renderedBody(in flowData) string {
+	if in.Payload != nil {
+		if b, ok := in.Payload["body"].(string); ok {
+			return b
+		}
+	}
+	return string(in.Data)
+}
+
+// payloadForChannel sends rendered template text to delivery, not the raw trigger JSON.
+func payloadForChannel(in flowData) map[string]any {
+	if in.Mode == persiststorage.ModeRendered {
+		return map[string]any{"body": renderedBody(in)}
+	}
+	if in.Payload != nil {
+		return in.Payload
+	}
+	return map[string]any{}
+}
+
+// executeGraph walks from triggers; each node receives the left block's output.
 func executeGraph(
 	ctx context.Context,
 	wf workflow.Workflow,
@@ -104,11 +129,16 @@ func executeGraph(
 		return nil, fmt.Errorf("workflow %s has no trigger nodes", workflowID)
 	}
 
+	start, err := initialFlow(payload)
+	if err != nil {
+		return nil, err
+	}
+
 	visited := make(map[string]bool)
 	var tasks []Task
 
-	var walk func(nodeID string) error
-	walk = func(nodeID string) error {
+	var walk func(nodeID string, in flowData) error
+	walk = func(nodeID string, in flowData) error {
 		if visited[nodeID] {
 			return nil
 		}
@@ -120,44 +150,41 @@ func executeGraph(
 		}
 
 		cfg := parseNodeConfig(node)
+		out := in
 
 		switch cfg.Variant {
+		case "template":
+			out = templateOutput(in, cfg.TemplateBody)
+
 		case "storage":
-			mode := persiststorage.ModeRaw
-			if cfg.StorageMode == "rendered" {
-				mode = persiststorage.ModeRendered
-			}
-			tplBody := ""
-			tplNode := findUpstreamTemplate(wf, nodeID)
-			if tplNode == nil {
-				tplNode = findFirstTemplate(wf)
-			}
-			if tplNode != nil {
-				tplCfg := parseNodeConfig(*tplNode)
-				tplBody = tplCfg.TemplateBody
+			saveMode := in.Mode
+			if cfg.StorageMode == "raw" && in.Mode != persiststorage.ModeRendered {
+				saveMode = persiststorage.ModeRaw
 			}
 			if _, err := storageSvc.Save(ctx, storage.SaveInput{
-				WorkflowID:   workflowID,
-				NodeID:       nodeID,
-				Mode:         mode,
-				Payload:      payload,
-				TemplateBody: tplBody,
+				WorkflowID:  workflowID,
+				NodeID:      nodeID,
+				Mode:        saveMode,
+				Payload:     in.Payload,
+				Data:        in.Data,
+				ContentType: in.ContentType,
 			}); err != nil {
 				return fmt.Errorf("storage save node %s: %w", nodeID, err)
 			}
+			out = in
 
 		case "channel":
 			if cfg.ChannelID != "" {
 				tasks = append(tasks, Task{
 					WorkflowID: workflowID,
 					ChannelID:  cfg.ChannelID,
-					Payload:    payload,
+					Payload:    payloadForChannel(in),
 				})
 			}
 		}
 
 		for _, nextID := range adj[nodeID] {
-			if err := walk(nextID); err != nil {
+			if err := walk(nextID, out); err != nil {
 				return err
 			}
 		}
@@ -165,13 +192,14 @@ func executeGraph(
 	}
 
 	for _, tid := range triggerIDs {
-		if err := walk(tid); err != nil {
+		if err := walk(tid, start); err != nil {
 			return nil, err
 		}
 	}
 
+	// Storage-only (no channel downstream): success with no delivery tasks.
 	if len(tasks) == 0 {
-		return nil, fmt.Errorf("no routing targets for workflow %s", workflowID)
+		return []Task{}, nil
 	}
 
 	return tasks, nil

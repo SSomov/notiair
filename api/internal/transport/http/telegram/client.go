@@ -35,7 +35,7 @@ type sendMessageResponse struct {
 }
 
 func (c *Client) SendMessage(ctx context.Context, chatID string, task routing.Task) error {
-	text := fmt.Sprintf("Workflow %s\nTemplate %s\nPayload: %v", task.WorkflowID, task.TemplateID, task.Payload)
+	text := messageText(task)
 
 	body := sendMessageRequest{
 		ChatID: chatID,
@@ -69,4 +69,13 @@ func (c *Client) SendMessage(ctx context.Context, chatID string, task routing.Ta
 	}
 
 	return nil
+}
+
+func messageText(task routing.Task) string {
+	if task.Payload != nil {
+		if body, ok := task.Payload["body"].(string); ok && body != "" {
+			return body
+		}
+	}
+	return fmt.Sprintf("Workflow %s\nTemplate %s\nPayload: %v", task.WorkflowID, task.TemplateID, task.Payload)
 }

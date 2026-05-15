@@ -42,7 +42,6 @@ func (s *Service) ResolveTargets(ctx context.Context, workflowID string, payload
 
 	tasks, err := executeGraph(ctx, wf, workflowID, payload, s.storageSvc)
 	if err != nil {
-		// Fallback to legacy filters map if graph has no channels but filters exist
 		if len(wf.Filters) > 0 {
 			return s.resolveFromFilters(workflowID, payload, wf), nil
 		}

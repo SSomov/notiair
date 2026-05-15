@@ -22,11 +22,14 @@ type Repository interface {
 }
 
 type SaveInput struct {
-	WorkflowID string
-	NodeID     string
-	Mode       persiststorage.Mode
-	Payload    map[string]any
+	WorkflowID   string
+	NodeID       string
+	Mode         persiststorage.Mode
+	Payload      map[string]any
 	TemplateBody string
+	// Data and ContentType come from the upstream block output (preferred).
+	Data        []byte
+	ContentType string
 }
 
 type Service struct {
@@ -63,6 +66,10 @@ func (s *Service) Save(ctx context.Context, input SaveInput) (persiststorage.Rec
 }
 
 func buildData(input SaveInput) ([]byte, string, error) {
+	if input.ContentType != "" {
+		return input.Data, input.ContentType, nil
+	}
+
 	switch input.Mode {
 	case persiststorage.ModeRaw:
 		if b64, ok := input.Payload["_binary"].(string); ok && b64 != "" {
